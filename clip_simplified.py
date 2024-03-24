@@ -1,38 +1,8 @@
-from PIL import Image
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
-
 from collections import OrderedDict
-from typing import Tuple, Union
+from typing import Union
 
 import torch
 from torch import nn
-
-
-try:
-    from torchvision.transforms import InterpolationMode
-
-    BICUBIC = InterpolationMode.BICUBIC
-except ImportError:
-    BICUBIC = Image.BICUBIC
-
-
-def _convert_image_to_rgb(image):
-    return image.convert("RGB")
-
-
-def _transform(n_px):
-    return Compose(
-        [
-            Resize(n_px, interpolation=BICUBIC),
-            CenterCrop(n_px),
-            _convert_image_to_rgb,
-            ToTensor(),
-            Normalize(
-                (0.48145466, 0.4578275, 0.40821073),
-                (0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
-    )
 
 
 def load(
@@ -42,10 +12,13 @@ def load(
     with open("clip_simplified.pt", "rb") as opened_file:
         state_dict = torch.load(opened_file, map_location="cpu")
 
-    model = build_model(state_dict).to(device)
+    model = CLIP()
+
+    model.load_state_dict(state_dict, strict=False)
+
     if str(device) == "cpu":
         model.float()
-    return model, _transform(model.visual.input_resolution)
+    return model
 
 
 class LayerNorm(nn.LayerNorm):
@@ -117,11 +90,9 @@ class VisionTransformer(nn.Module):
         width: int,
         layers: int,
         heads: int,
-        output_dim: int,
     ):
         super().__init__()
         self.input_resolution = input_resolution
-        self.output_dim = output_dim
         self.conv1 = nn.Conv2d(
             in_channels=3,
             out_channels=width,
@@ -138,9 +109,6 @@ class VisionTransformer(nn.Module):
         self.ln_pre = LayerNorm(width)
 
         self.transformer = Transformer(width, layers, heads)
-
-        self.ln_post = LayerNorm(width)
-        self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
     def forward(self, x: torch.Tensor):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -160,12 +128,10 @@ class VisionTransformer(nn.Module):
 class CLIP(nn.Module):
     def __init__(
         self,
-        # vision
-        image_resolution: int,
-        vision_layers: Union[Tuple[int, int, int, int], int],
-        vision_width: int,
-        vision_patch_size: int,
-        embed_dim: int = 512,
+        image_resolution: int = 224,
+        vision_layers: int = 12,
+        vision_width: int = 768,
+        vision_patch_size: int = 32,
     ):
         super().__init__()
 
@@ -176,7 +142,6 @@ class CLIP(nn.Module):
             width=vision_width,
             layers=vision_layers,
             heads=vision_heads,
-            output_dim=embed_dim,
         )
 
     @property
@@ -185,27 +150,3 @@ class CLIP(nn.Module):
 
     def encode_image(self, image):
         return self.visual(image.type(self.dtype))
-
-
-def build_model(state_dict: dict):
-
-    vision_width = state_dict["visual.conv1.weight"].shape[0]
-    vision_layers = len(
-        [
-            k
-            for k in state_dict.keys()
-            if k.startswith("visual.") and k.endswith(".attn.in_proj_weight")
-        ]
-    )
-    vision_patch_size = state_dict["visual.conv1.weight"].shape[-1]
-    grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
-    image_resolution = vision_patch_size * grid_size
-
-    model = CLIP(image_resolution, vision_layers, vision_width, vision_patch_size)
-
-    for key in ["input_resolution", "context_length", "vocab_size"]:
-        if key in state_dict:
-            del state_dict[key]
-
-    model.load_state_dict(state_dict, strict=False)
-    return model.eval()
