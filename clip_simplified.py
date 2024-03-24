@@ -1,12 +1,5 @@
-import hashlib
-import os
-import urllib
-import warnings
-from typing import List
-
 from PIL import Image
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
-from tqdm import tqdm
 
 from collections import OrderedDict
 from typing import Tuple, Union
@@ -21,62 +14,6 @@ try:
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
-
-
-__all__ = ["available_models", "load"]
-
-_MODELS = {
-    "ViT-B/32": "https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt",
-    "ViT-B/16": "https://openaipublic.azureedge.net/clip/models/5806e77cd80f8b59890b7e101eabd078d9fb84e6937f9e85e4ecb61988df416f/ViT-B-16.pt",
-}
-
-
-def _download(url: str, root: str):
-    os.makedirs(root, exist_ok=True)
-    filename = os.path.basename(url)
-
-    expected_sha256 = url.split("/")[-2]
-    download_target = os.path.join(root, filename)
-
-    if os.path.exists(download_target) and not os.path.isfile(download_target):
-        raise RuntimeError(f"{download_target} exists and is not a regular file")
-
-    if os.path.isfile(download_target):
-        if (
-            hashlib.sha256(open(download_target, "rb").read()).hexdigest()
-            == expected_sha256
-        ):
-            return download_target
-        else:
-            warnings.warn(
-                f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file"
-            )
-
-    with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
-        with tqdm(
-            total=int(source.info().get("Content-Length")),
-            ncols=80,
-            unit="iB",
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as loop:
-            while True:
-                buffer = source.read(8192)
-                if not buffer:
-                    break
-
-                output.write(buffer)
-                loop.update(len(buffer))
-
-    if (
-        hashlib.sha256(open(download_target, "rb").read()).hexdigest()
-        != expected_sha256
-    ):
-        raise RuntimeError(
-            "Model has been downloaded but the SHA256 checksum does not not match"
-        )
-
-    return download_target
 
 
 def _convert_image_to_rgb(image):
@@ -98,31 +35,14 @@ def _transform(n_px):
     )
 
 
-def available_models() -> List[str]:
-    """Returns the names of available CLIP models"""
-    return list(_MODELS.keys())
-
-
 def load(
-    name: str,
     device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-    download_root: str = None,
 ):
-    if name in _MODELS:
-        model_path = _download(
-            _MODELS[name], download_root or os.path.expanduser("~/.cache/clip")
-        )
-    elif os.path.isfile(name):
-        model_path = name
-    else:
-        raise RuntimeError(
-            f"Model {name} not found; available models = {available_models()}"
-        )
 
-    with open(model_path, "rb") as opened_file:
+    with open("clip_simplified.pt", "rb") as opened_file:
         state_dict = torch.load(opened_file, map_location="cpu")
 
-    model = build_model(state_dict.state_dict()).to(device)
+    model = build_model(state_dict).to(device)
     if str(device) == "cpu":
         model.float()
     return model, _transform(model.visual.input_resolution)
@@ -226,27 +146,13 @@ class VisionTransformer(nn.Module):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        x = torch.cat(
-            [
-                self.class_embedding.to(x.dtype)
-                + torch.zeros(
-                    x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-                ),
-                x,
-            ],
-            dim=1,
-        )  # shape = [*, grid ** 2 + 1, width]
-        x = x + self.positional_embedding.to(x.dtype)
+        x = x + self.positional_embedding[: x.shape[1], :].to(x.dtype)
+
         x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-
-        x = self.ln_post(x[:, 0, :])
-
-        if self.proj is not None:
-            x = x @ self.proj
 
         return x
 
@@ -254,12 +160,12 @@ class VisionTransformer(nn.Module):
 class CLIP(nn.Module):
     def __init__(
         self,
-        embed_dim: int,
         # vision
         image_resolution: int,
         vision_layers: Union[Tuple[int, int, int, int], int],
         vision_width: int,
         vision_patch_size: int,
+        embed_dim: int = 512,
     ):
         super().__init__()
 
@@ -278,44 +184,7 @@ class CLIP(nn.Module):
         return self.visual.conv1.weight.dtype
 
     def encode_image(self, image):
-        x = self.visual.conv1(image.type(self.dtype))
-        x = x.reshape(x.shape[0], x.shape[1], -1)
-        x = x.permute(0, 2, 1)
-        x = x + self.visual.positional_embedding[: x.shape[1], :].to(x.dtype)
-        x = self.visual.ln_pre(x)
-        return x
-
-    def encode_image_original(self, image):
         return self.visual(image.type(self.dtype))
-
-
-def convert_weights(model: nn.Module):
-    """Convert applicable model parameters to fp16"""
-
-    def _convert_weights_to_fp16(l):
-        if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-            l.weight.data = l.weight.data.half()
-            if l.bias is not None:
-                l.bias.data = l.bias.data.half()
-
-        if isinstance(l, nn.MultiheadAttention):
-            for attr in [
-                *[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]],
-                "in_proj_bias",
-                "bias_k",
-                "bias_v",
-            ]:
-                tensor = getattr(l, attr)
-                if tensor is not None:
-                    tensor.data = tensor.data.half()
-
-        for name in ["text_projection", "proj"]:
-            if hasattr(l, name):
-                attr = getattr(l, name)
-                if attr is not None:
-                    attr.data = attr.data.half()
-
-    model.apply(_convert_weights_to_fp16)
 
 
 def build_model(state_dict: dict):
@@ -332,16 +201,11 @@ def build_model(state_dict: dict):
     grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
     image_resolution = vision_patch_size * grid_size
 
-    embed_dim = state_dict["text_projection"].shape[1]
-
-    model = CLIP(
-        embed_dim, image_resolution, vision_layers, vision_width, vision_patch_size
-    )
+    model = CLIP(image_resolution, vision_layers, vision_width, vision_patch_size)
 
     for key in ["input_resolution", "context_length", "vocab_size"]:
         if key in state_dict:
             del state_dict[key]
 
-    convert_weights(model)
     model.load_state_dict(state_dict, strict=False)
     return model.eval()
