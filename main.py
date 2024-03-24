@@ -1,5 +1,4 @@
-from clip_simplified import load
-from clip_original import load as original_load
+from clip import load
 from image import transform_image
 import numpy as np
 import torch
@@ -9,7 +8,6 @@ from imagenetv2_pytorch import ImageNetV2Dataset
 if __name__ == "__main__":
 
     model = load()
-    model_original, _ = original_load("ViT-B/32")
     input_resolution = model.visual.input_resolution
 
     print(
