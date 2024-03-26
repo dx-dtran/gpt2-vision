@@ -3,3 +3,4 @@ torchvision
 pillow
 numpy
 tqdm
+tiktoken
