@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class VisionLanguageConnector(nn.Module):
-    def __init__(self, vision_embed_dim=768, language_embed_dim=1024, hidden_dim=1024):
+    def __init__(self, vision_embed_dim=768, language_embed_dim=768, hidden_dim=1024):
         super(VisionLanguageConnector, self).__init__()
 
         self.vision_embed_dim = vision_embed_dim

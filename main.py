@@ -1,5 +1,6 @@
 from clip import load
 from image import transform_image
+from vision_language_connector import VisionLanguageConnector
 import numpy as np
 import torch
 from tqdm.notebook import tqdm
@@ -24,10 +25,9 @@ if __name__ == "__main__":
         for i, (images, target) in enumerate(tqdm(loader)):
             # predict
             image_features = model.encode_image(images)
+            connector = VisionLanguageConnector()
+            vision_embed = connector(image_features)
+            print(vision_embed.shape)
 
             if i > 4:
                 break
-
-            print("original")
-            print(image_features)
-            print(image_features.shape)

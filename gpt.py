@@ -229,4 +229,4 @@ if __name__ == "__main__":
 
     model.load_state_dict(state_dict_transposed, strict=False)
 
-    generate_text("Hello my name is ", model)
+    generate_text("Hello my name is", model)
