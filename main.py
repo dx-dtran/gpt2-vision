@@ -1,4 +1,4 @@
-from clip import load
+from clip import load_clip
 from image import transform_image
 from vision_language_connector import VisionLanguageConnector
 import numpy as np
@@ -8,7 +8,7 @@ from imagenetv2_pytorch import ImageNetV2Dataset
 
 if __name__ == "__main__":
 
-    model = load()
+    model = load_clip()
     input_resolution = model.visual.input_resolution
 
     print(

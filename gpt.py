@@ -112,9 +112,9 @@ class GPT(nn.Module):
     def _forward_transformer_blocks(
         self, x, pos, mask=None, cache=None, build_cache=False
     ):
-        tok_emb = self.wte(x)
+        # tok_emb = self.wte(x)
         pos_emb = self.wpe(pos)
-        x = self.drop(tok_emb + pos_emb)
+        x = self.drop(x + pos_emb)
         kv_cache = []
 
         if cache is not None:
@@ -165,15 +165,30 @@ class GPT(nn.Module):
             y = self._sample_next_token(x, temperature)
             yield y
 
-    def forward(self, x, targets=None):
-        b, t = x.size()
-        assert (
-            t <= self.config.block_size
-        ), f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = torch.arange(0, t, dtype=torch.long, device=x.device)
+    def forward(self, x, visual_embeds=None, targets=None):
 
-        mask = self._create_causal_mask(t)
-        x, _ = self._forward_transformer_blocks(x, pos, mask=mask)
+        text_embeds = self.wte(x)  # Get text embeddings from token IDs
+        combined_embeds = torch.cat(
+            [visual_embeds, text_embeds], dim=1
+        )  # Concatenate embeddings
+
+        # Generate positional indices for the combined sequence
+        batch_size, seq_length, _ = combined_embeds.shape
+
+        assert (
+            seq_length <= self.config.block_size
+        ), f"Cannot forward sequence of length {seq_length}, block size is only {self.config.block_size}"
+
+        position_ids = (
+            torch.arange(0, seq_length, device=combined_embeds.device)
+            .unsqueeze(0)
+            .repeat(batch_size, 1)
+        )
+
+        mask = self._create_causal_mask(seq_length)
+        x, _ = self._forward_transformer_blocks(
+            combined_embeds, position_ids, mask=mask
+        )
 
         return x @ self.wte.weight.T
 

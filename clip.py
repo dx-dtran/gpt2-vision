@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 
-def load(
+def load_clip(
     device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
 ):
 

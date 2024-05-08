@@ -1,6 +1,12 @@
 import os
-from PIL import Image
 import json
+import matplotlib.pyplot as plt
+import tiktoken
+import torch
+
+from PIL import Image
+from clip import load_clip
+from vision_language_connector import VisionLanguageConnector
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import (
     Resize,
@@ -10,7 +16,8 @@ from torchvision.transforms import (
     InterpolationMode,
     Compose,
 )
-import matplotlib.pyplot as plt
+
+from gpt import GPT, GPTConfig, transpose_specific_layers
 
 
 def convert_image_to_rgb(image):
@@ -94,18 +101,39 @@ if __name__ == "__main__":
     # Usage example
     coco_root_dir = "../coco/val2017"
     coco_ann_file = "../coco/annotations/captions_val2017.json"
+    config = GPTConfig()
+    model = GPT(config)
 
+    state_dict = torch.load("gpt2.bin", map_location="cpu")
+    state_dict_transposed = transpose_specific_layers(state_dict)
+
+    model.load_state_dict(state_dict_transposed, strict=False)
     transform = _transform(224)
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
     coco_dataloader = DataLoader(
         coco_dataset, batch_size=8, shuffle=True, num_workers=4
     )
-
+    vision_encoder = load_clip()
     # Test loading some samples
-    for i, (image, captions) in enumerate(coco_dataloader):
+    for i, (images, captions) in enumerate(coco_dataloader):
         print("Captions:")
         print(captions)
-        print(f"Image Shape: {image.shape}")
-        # show_images(image)
+        print(f"Image Shape: {images.shape}")
+
+        image_features = vision_encoder.encode_image(images)
+        connector = VisionLanguageConnector()
+        vision_embed = connector(image_features)
+
+        enc = tiktoken.get_encoding("gpt2")
+        encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
+        decode = lambda l: enc.decode(l)
+        start_ids = [encode(caption) for caption in captions]
+        padded_lists = [lst + [0] * (1024 - len(lst) - 49) for lst in start_ids]
+        x = torch.tensor(padded_lists)
+
+        model(x, vision_embed)
+
+        print(vision_embed.shape)
+        print("done")
 
         break
