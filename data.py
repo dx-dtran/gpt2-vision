@@ -159,7 +159,7 @@ if __name__ == "__main__":
             x_train_padded[i, : seq.size(0)] = seq
 
         # Step 5: Create target tensor with shifted captions and masked image embeddings
-        y_train = torch.full_like(x_train_padded, -100)
+        y_train = torch.full((BATCH_SIZE, x_train_padded.size(1) - 1), -100)
 
         # Fill in y_train with appropriately shifted sequences
         for i in range(BATCH_SIZE):
