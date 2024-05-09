@@ -159,7 +159,7 @@ if __name__ == "__main__":
             x_train_padded[i, : seq.size(0)] = seq
 
         # Step 5: Create target tensor with shifted captions and masked image embeddings
-        y_train = torch.full((BATCH_SIZE, x_train_padded.size(1) - 1), -100)
+        y_train = torch.full((BATCH_SIZE, x_train_padded.size(1)), -100)
 
         # Fill in y_train with appropriately shifted sequences
         for i in range(BATCH_SIZE):
@@ -167,7 +167,7 @@ if __name__ == "__main__":
             current_sequence = tokenized_captions[i]
             shifted_sequence = torch.cat(
                 [
-                    current_sequence[1:],
+                    current_sequence,
                     torch.tensor([end_text_token_id], dtype=torch.long),
                 ]
             )
@@ -175,7 +175,7 @@ if __name__ == "__main__":
             # Fill the y_train tensor for the current batch index
             y_train[i, : shifted_sequence.size(0)] = shifted_sequence
 
-        vision_embed_mask = torch.full((BATCH_SIZE, num_patches + 1), -100)
+        vision_embed_mask = torch.full((BATCH_SIZE, num_patches), -100)
 
         y_train = torch.cat([vision_embed_mask, y_train], dim=1)
 
