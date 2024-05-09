@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import tiktoken
 import torch
 
+from transformers import GPT2Tokenizer
 from PIL import Image
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
@@ -104,6 +105,8 @@ if __name__ == "__main__":
     config = GPTConfig()
     model = GPT(config)
 
+    BATCH_SIZE = 8
+
     state_dict = torch.load("gpt2.bin", map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
 
@@ -111,9 +114,12 @@ if __name__ == "__main__":
     transform = _transform(224)
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
     coco_dataloader = DataLoader(
-        coco_dataset, batch_size=8, shuffle=True, num_workers=4
+        coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4
     )
     vision_encoder = load_clip()
+
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
     # Test loading some samples
     for i, (images, captions) in enumerate(coco_dataloader):
         print("Captions:")
@@ -124,14 +130,56 @@ if __name__ == "__main__":
         connector = VisionLanguageConnector()
         vision_embed = connector(image_features)
 
-        enc = tiktoken.get_encoding("gpt2")
-        encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-        decode = lambda l: enc.decode(l)
-        start_ids = [encode(caption) for caption in captions]
-        padded_lists = [lst + [0] * (1024 - len(lst) - 49) for lst in start_ids]
-        x = torch.tensor(padded_lists)
+        # Assuming you have these initialized somewhere
+        num_patches = vision_embed.size(1)
+        embed_dim = vision_embed.size(2)
 
-        model(x, vision_embed)
+        # Special tokens (assumed to be defined in your tokenizer's vocabulary)
+        image_end_token_id = tokenizer.convert_tokens_to_ids("[IMG_END]")
+        end_text_token_id = tokenizer.eos_token_id
+        pad_token_id = 0
+
+        # Step 1: Tokenize captions
+        tokenized_captions = [
+            torch.tensor(tokenizer.encode(caption)) for caption in captions
+        ]
+
+        x_train = [
+            torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]])
+            for i in range(BATCH_SIZE)
+        ]
+
+        # Step 4: Pad the training examples to the max length in the batch
+        max_length = max([seq.size(0) for seq in x_train])
+        x_train_padded = torch.full(
+            (BATCH_SIZE, max_length), pad_token_id, dtype=torch.long
+        )
+
+        for i, seq in enumerate(x_train):
+            x_train_padded[i, : seq.size(0)] = seq
+
+        # Step 5: Create target tensor with shifted captions and masked image embeddings
+        y_train = torch.full_like(x_train_padded, -100)
+
+        # Fill in y_train with appropriately shifted sequences
+        for i in range(BATCH_SIZE):
+            # Get the current sequence and calculate the needed shift
+            current_sequence = tokenized_captions[i]
+            shifted_sequence = torch.cat(
+                [
+                    current_sequence[1:],
+                    torch.tensor([end_text_token_id], dtype=torch.long),
+                ]
+            )
+
+            # Fill the y_train tensor for the current batch index
+            y_train[i, : shifted_sequence.size(0)] = shifted_sequence
+
+        vision_embed_mask = torch.full((BATCH_SIZE, num_patches + 1), -100)
+
+        y_train = torch.cat([vision_embed_mask, y_train], dim=1)
+
+        model(x_train_padded, vision_embed, target=y_train)
 
         print(vision_embed.shape)
         print("done")
