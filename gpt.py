@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import time
 import tiktoken
 from dataclasses import dataclass
@@ -196,13 +197,20 @@ class GPT(nn.Module):
         x, _ = self._forward_transformer_blocks(
             combined_embeds, position_ids, combined_mask
         )
+        logits = x @ self.wte.weight.T
 
-        return x @ self.wte.weight.T
+        # Check if targets exist and compute the loss with ignore_index -100
+        if targets is not None:
+            vocab_size = logits.size(-1)
+            logits = logits.view(
+                -1, vocab_size
+            )  # Reshape logits to (batch_size * seq_length, vocab_size)
+            targets = targets.view(-1)  # Flatten targets to (batch_size * seq_length)
 
-    def loss(self, x, y):
-        logits = self(x)
-        loss = nn.functional.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
-        return loss.mean()
+            loss = F.cross_entropy(logits, targets, ignore_index=-100)
+            return logits, loss
+
+        return logits, None
 
 
 def transpose_specific_layers(state_dict):

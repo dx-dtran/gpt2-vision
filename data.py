@@ -184,7 +184,9 @@ if __name__ == "__main__":
         prefix_padding_mask = torch.full((BATCH_SIZE, num_patches), 1)
         padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1)
 
-        model(x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask)
+        logits, loss = model(
+            x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask
+        )
 
         print(vision_embed.shape)
         print("done")
