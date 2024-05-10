@@ -1,9 +1,9 @@
 import os
 import json
 import matplotlib.pyplot as plt
-import tiktoken
 import torch
 
+from gpt import GPT, GPTConfig, transpose_specific_layers
 from transformers import GPT2Tokenizer
 from PIL import Image
 from clip import load_clip
@@ -17,8 +17,6 @@ from torchvision.transforms import (
     InterpolationMode,
     Compose,
 )
-
-from gpt import GPT, GPTConfig, transpose_specific_layers
 
 
 def convert_image_to_rgb(image):
@@ -119,6 +117,7 @@ if __name__ == "__main__":
     vision_encoder = load_clip()
 
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    print("done loading tokenizer")
 
     # Test loading some samples
     for i, (images, captions) in enumerate(coco_dataloader):
@@ -129,6 +128,8 @@ if __name__ == "__main__":
         image_features = vision_encoder.encode_image(images)
         connector = VisionLanguageConnector()
         vision_embed = connector(image_features)
+
+        print("done getting vision embeddings")
 
         # Assuming you have these initialized somewhere
         num_patches = vision_embed.size(1)
@@ -179,7 +180,11 @@ if __name__ == "__main__":
 
         y_train = torch.cat([vision_embed_mask, y_train], dim=1)
 
-        model(x_train_padded, vision_embed, target=y_train)
+        padding_mask = (x_train_padded != pad_token_id).long()
+        prefix_padding_mask = torch.full((BATCH_SIZE, num_patches), 1)
+        padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1)
+
+        model(x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask)
 
         print(vision_embed.shape)
         print("done")

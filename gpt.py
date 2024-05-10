@@ -131,11 +131,7 @@ class GPT(nn.Module):
 
     def _create_causal_mask(self, length: int):
         mask = torch.tril(torch.ones((length, length), dtype=torch.float32))
-        return (
-            mask.view(1, 1, length, length)
-            .to(self.wte.weight.dtype)
-            .to(self.wte.weight.device)
-        )
+        return mask.view(1, 1, length, length).to(self.wte.weight.device).bool()
 
     def _sample_next_token(self, x, temperature):
         logits = x[:, -1:] @ self.wte.weight.T
@@ -165,7 +161,7 @@ class GPT(nn.Module):
             y = self._sample_next_token(x, temperature)
             yield y
 
-    def forward(self, x, visual_embeds=None, targets=None):
+    def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
 
         text_embeds = self.wte(x)  # Get text embeddings from token IDs
         combined_embeds = torch.cat(
@@ -185,9 +181,20 @@ class GPT(nn.Module):
             .repeat(batch_size, 1)
         )
 
-        mask = self._create_causal_mask(seq_length)
+        # Ensure padding_mask is in the correct shape for broadcasting
+        if padding_mask is not None:
+            padding_mask = padding_mask.unsqueeze(1).unsqueeze(
+                2
+            )  # [batch_size, 1, 1, seq_length]
+
+        causal_mask = self._create_causal_mask(seq_length)
+        if padding_mask is not None:
+            combined_mask = causal_mask & padding_mask
+        else:
+            combined_mask = causal_mask
+
         x, _ = self._forward_transformer_blocks(
-            combined_embeds, position_ids, mask=mask
+            combined_embeds, position_ids, combined_mask
         )
 
         return x @ self.wte.weight.T
