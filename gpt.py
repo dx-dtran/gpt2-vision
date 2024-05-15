@@ -142,24 +142,32 @@ class GPT(nn.Module):
         )
         return y
 
-    def generate(self, x, max_new_tokens=256, temperature=0.8):
-        _, t = x.size()
-        pos = torch.arange(0, t, dtype=torch.long, device=x.device)
+    def generate(self, x, visual_embeds, max_new_tokens=256, temperature=0.8):
+        # Initial combined embeddings
+        text_embeds = self.wte(x)
+        combined_embeds = torch.cat([visual_embeds, text_embeds], dim=0).unsqueeze(0)
+
+        _, t, _ = combined_embeds.size()
+        pos = torch.arange(0, t, dtype=torch.long, device=combined_embeds.device)
         mask = self._create_causal_mask(t)
-        x, cache = self._forward_transformer_blocks(x, pos, mask=mask, build_cache=True)
-        y = self._sample_next_token(x, temperature)
+
+        combined_embeds, cache = self._forward_transformer_blocks(
+            combined_embeds, pos, mask=mask, build_cache=True
+        )
+        y = self._sample_next_token(combined_embeds, temperature)
         position = t
         yield y
 
         for _ in range(max_new_tokens):
             position += 1
             x = y
+            text_embeds = self.wte(x)
             x, cache = self._forward_transformer_blocks(
-                x,
+                text_embeds,
                 torch.tensor([position], dtype=torch.long, device=x.device),
                 cache=cache,
             )
-            y = self._sample_next_token(x, temperature)
+            y = self._sample_next_token(text_embeds, temperature)
             yield y
 
     def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
@@ -227,21 +235,17 @@ def transpose_specific_layers(state_dict):
     return state_dict
 
 
-def generate_text(prompt: str, model: GPT):
-    enc = tiktoken.get_encoding("gpt2")
-    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-    decode = lambda l: enc.decode(l)
-    start_ids = encode(prompt)
+def generate_text(model: GPT, vision_embeds, tokenizer):
+    image_end_token_id = tokenizer.convert_tokens_to_ids("Ġ")
 
-    x = torch.tensor([start_ids])
+    x = torch.tensor([image_end_token_id])
 
-    print(prompt, end="")
     tokens = []
     start = time.time()
-    for token in model.generate(x, max_new_tokens=256):
+    for token in model.generate(x, vision_embeds, max_new_tokens=64):
         tok = token.item()
         tokens.append(tok)
-        print(decode([tok]), end="", flush=True)
+        print(tokenizer.decode([tok]), end="", flush=True)
     end = time.time()
     print("---------------")
     print(

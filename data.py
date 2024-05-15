@@ -15,7 +15,7 @@ from torchvision.transforms import (
     InterpolationMode,
     Compose,
 )
-from gpt import GPT, GPTConfig, transpose_specific_layers
+from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
 
@@ -184,6 +184,9 @@ def train_model(
             print(
                 f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps} - Learning Rate: {scheduler.get_last_lr()[0]:.6f}"
             )
+
+            if (i + 1) % 10 == 0 or (i + 1) == 1:
+                generate_text(model, vision_embed[0], tokenizer)
 
         print(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader)}"
