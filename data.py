@@ -2,6 +2,8 @@ import os
 import json
 import matplotlib.pyplot as plt
 import torch
+import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR
 
 from gpt import GPT, GPTConfig, transpose_specific_layers
 from transformers import GPT2Tokenizer
@@ -104,6 +106,12 @@ if __name__ == "__main__":
     model = GPT(config)
 
     BATCH_SIZE = 8
+    EPOCHS = 5
+    LEARNING_RATE = 5e-5
+    STEP_SIZE = 1
+    GAMMA = 0.9
+    CLIP_GRAD_NORM = 1.0  # Gradient clipping
+    GRADIENT_ACCUMULATION_STEPS = 4  # Gradient accumulation
 
     state_dict = torch.load("gpt2.bin", map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
@@ -119,76 +127,105 @@ if __name__ == "__main__":
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     print("done loading tokenizer")
 
-    # Test loading some samples
-    for i, (images, captions) in enumerate(coco_dataloader):
-        print("Captions:")
-        print(captions)
-        print(f"Image Shape: {images.shape}")
+    # Freeze the weights of the model and vision encoder
+    for param in model.parameters():
+        param.requires_grad = False
 
-        image_features = vision_encoder.encode_image(images)
-        connector = VisionLanguageConnector()
-        vision_embed = connector(image_features)
+    for param in vision_encoder.parameters():
+        param.requires_grad = False
 
-        print("done getting vision embeddings")
+    connector = VisionLanguageConnector()
+    optimizer = optim.AdamW(connector.parameters(), lr=LEARNING_RATE)
+    scheduler = StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
 
-        # Assuming you have these initialized somewhere
-        num_patches = vision_embed.size(1)
-        embed_dim = vision_embed.size(2)
+    model.eval()  # Set the model to evaluation mode since it's frozen
+    vision_encoder.eval()  # Set the vision encoder to evaluation mode since it's frozen
+    connector.train()  # Set the connector to training mode
 
-        # Special tokens (assumed to be defined in your tokenizer's vocabulary)
-        image_end_token_id = tokenizer.convert_tokens_to_ids("[IMG_END]")
-        end_text_token_id = tokenizer.eos_token_id
-        pad_token_id = 0
+    for epoch in range(EPOCHS):
+        epoch_loss = 0
+        optimizer.zero_grad()
 
-        # Step 1: Tokenize captions
-        tokenized_captions = [
-            torch.tensor(tokenizer.encode(caption)) for caption in captions
-        ]
+        for i, (images, captions) in enumerate(coco_dataloader):
+            image_features = vision_encoder.encode_image(images)
+            vision_embed = connector(image_features)
 
-        x_train = [
-            torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]])
-            for i in range(BATCH_SIZE)
-        ]
+            # Assuming you have these initialized somewhere
+            num_patches = vision_embed.size(1)
+            embed_dim = vision_embed.size(2)
 
-        # Step 4: Pad the training examples to the max length in the batch
-        max_length = max([seq.size(0) for seq in x_train])
-        x_train_padded = torch.full(
-            (BATCH_SIZE, max_length), pad_token_id, dtype=torch.long
-        )
+            # Special tokens (assumed to be defined in your tokenizer's vocabulary)
+            image_end_token_id = tokenizer.convert_tokens_to_ids("[IMG_END]")
+            end_text_token_id = tokenizer.eos_token_id
+            pad_token_id = 0
 
-        for i, seq in enumerate(x_train):
-            x_train_padded[i, : seq.size(0)] = seq
+            # Step 1: Tokenize captions
+            tokenized_captions = [
+                torch.tensor(tokenizer.encode(caption)) for caption in captions
+            ]
 
-        # Step 5: Create target tensor with shifted captions and masked image embeddings
-        y_train = torch.full((BATCH_SIZE, x_train_padded.size(1)), -100)
+            x_train = [
+                torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]])
+                for i in range(BATCH_SIZE)
+            ]
 
-        # Fill in y_train with appropriately shifted sequences
-        for i in range(BATCH_SIZE):
-            # Get the current sequence and calculate the needed shift
-            current_sequence = tokenized_captions[i]
-            shifted_sequence = torch.cat(
-                [
-                    current_sequence,
-                    torch.tensor([end_text_token_id], dtype=torch.long),
-                ]
+            # Step 4: Pad the training examples to the max length in the batch
+            max_length = max([seq.size(0) for seq in x_train])
+            x_train_padded = torch.full(
+                (BATCH_SIZE, max_length), pad_token_id, dtype=torch.long
             )
 
-            # Fill the y_train tensor for the current batch index
-            y_train[i, : shifted_sequence.size(0)] = shifted_sequence
+            for i, seq in enumerate(x_train):
+                x_train_padded[i, : seq.size(0)] = seq
 
-        vision_embed_mask = torch.full((BATCH_SIZE, num_patches), -100)
+            # Step 5: Create target tensor with shifted captions and masked image embeddings
+            y_train = torch.full((BATCH_SIZE, x_train_padded.size(1)), -100)
 
-        y_train = torch.cat([vision_embed_mask, y_train], dim=1)
+            # Fill in y_train with appropriately shifted sequences
+            for i in range(BATCH_SIZE):
+                # Get the current sequence and calculate the needed shift
+                current_sequence = tokenized_captions[i]
+                shifted_sequence = torch.cat(
+                    [
+                        current_sequence,
+                        torch.tensor([end_text_token_id], dtype=torch.long),
+                    ]
+                )
 
-        padding_mask = (x_train_padded != pad_token_id).long()
-        prefix_padding_mask = torch.full((BATCH_SIZE, num_patches), 1)
-        padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1)
+                # Fill the y_train tensor for the current batch index
+                y_train[i, : shifted_sequence.size(0)] = shifted_sequence
 
-        logits, loss = model(
-            x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask
+            vision_embed_mask = torch.full((BATCH_SIZE, num_patches), -100)
+
+            y_train = torch.cat([vision_embed_mask, y_train], dim=1)
+
+            padding_mask = (x_train_padded != pad_token_id).long()
+            prefix_padding_mask = torch.full((BATCH_SIZE, num_patches), 1)
+            padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1)
+
+            logits, loss = model(
+                x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask
+            )
+
+            # Scale the loss for gradient accumulation
+            loss = loss / GRADIENT_ACCUMULATION_STEPS
+            loss.backward()  # Backpropagate the loss
+
+            if (i + 1) % GRADIENT_ACCUMULATION_STEPS == 0:
+                torch.nn.utils.clip_grad_norm_(
+                    connector.parameters(), CLIP_GRAD_NORM
+                )  # Gradient clipping
+                optimizer.step()  # Update the model parameters
+                optimizer.zero_grad()
+                scheduler.step()  # Update the learning rate
+
+            epoch_loss += loss.item() * GRADIENT_ACCUMULATION_STEPS
+            print(
+                f"Batch {i + 1}/{len(coco_dataloader)} - Loss: {loss.item() * GRADIENT_ACCUMULATION_STEPS}"
+            )
+
+        print(
+            f"Epoch {epoch + 1}/{EPOCHS} - Average Loss: {epoch_loss / len(coco_dataloader)}"
         )
 
-        print(vision_embed.shape)
-        print("done")
-
-        break
+    print("Training complete.")
