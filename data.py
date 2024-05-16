@@ -162,7 +162,12 @@ def train_model(
     batch_size,
     gradient_accumulation_steps,
     clip_grad_norm,
+    device,
 ):
+    model.to(device)
+    vision_encoder.to(device)
+    connector.to(device)
+
     model.train()
     vision_encoder.eval()
     connector.train()
@@ -174,6 +179,8 @@ def train_model(
         for i, (images, captions) in enumerate(data_loader):
             start_time = time.time()  # Start timer
 
+            images.to(device)
+
             image_features = vision_encoder.encode_image(images)
             vision_embed = connector(image_features)
             num_patches = vision_embed.size(1)
@@ -181,6 +188,10 @@ def train_model(
             x_train_padded, y_train, padding_mask = tokenize_and_prepare_batches(
                 captions, tokenizer, batch_size, num_patches
             )
+
+            x_train_padded = x_train_padded.to(device)
+            y_train = y_train.to(device)
+            padding_mask = padding_mask.to(device)
 
             logits, loss = model(
                 x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask
@@ -225,6 +236,7 @@ if __name__ == "__main__":
     GRADIENT_ACCUMULATION_STEPS = 4
     coco_root_dir = "../coco/val2017"
     coco_ann_file = "../coco/annotations/captions_val2017.json"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Data Loading
     transform = get_transform(224)
@@ -256,4 +268,5 @@ if __name__ == "__main__":
         BATCH_SIZE,
         GRADIENT_ACCUMULATION_STEPS,
         CLIP_GRAD_NORM,
+        device,
     )
