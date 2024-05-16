@@ -79,6 +79,16 @@ def show_images(batch_images):
     plt.show()
 
 
+def show_image(image_tensor):
+    # Detach the tensor from the graph, convert to numpy array, and transpose to (H, W, C)
+    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
+
+    # Since the image is in range [0, 1] we can directly show it
+    plt.imshow(image)
+    plt.axis("off")  # Hide axis
+    plt.show()
+
+
 def load_model_and_tokenizer():
     config = GPTConfig()
     model = GPT(config)
@@ -103,7 +113,7 @@ def prepare_training_components(learning_rate, step_size, gamma):
 
 
 def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
-    image_end_token_id = tokenizer.convert_tokens_to_ids("Ġ")
+    image_end_token_id = tokenizer.bos_token_id
     end_text_token_id = tokenizer.eos_token_id
     pad_token_id = 0
 
@@ -185,8 +195,9 @@ def train_model(
                 f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps} - Learning Rate: {scheduler.get_last_lr()[0]:.6f}"
             )
 
-            if (i + 1) % 10 == 0 or (i + 1) == 1:
-                generate_text(model, vision_embed[0], tokenizer)
+            if (i + 1) % 100 == 0 or (i + 1) == 1:
+                generate_text(model, tokenizer, vision_embeds=vision_embed[0])
+                show_image(images[0])
 
         print(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader)}"
@@ -196,7 +207,7 @@ def train_model(
 
 if __name__ == "__main__":
     # Configuration
-    BATCH_SIZE = 8
+    BATCH_SIZE = 32
     EPOCHS = 5
     LEARNING_RATE = 5e-5
     STEP_SIZE = 1

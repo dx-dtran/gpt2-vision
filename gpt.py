@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import time
-import tiktoken
+from transformers import GPT2Tokenizer
 from dataclasses import dataclass
 
 
@@ -113,7 +113,6 @@ class GPT(nn.Module):
     def _forward_transformer_blocks(
         self, x, pos, mask=None, cache=None, build_cache=False
     ):
-        # tok_emb = self.wte(x)
         pos_emb = self.wpe(pos)
         x = self.drop(x + pos_emb)
         kv_cache = []
@@ -142,10 +141,14 @@ class GPT(nn.Module):
         )
         return y
 
-    def generate(self, x, visual_embeds, max_new_tokens=256, temperature=0.8):
-        # Initial combined embeddings
+    def generate(self, x, visual_embeds=None, max_new_tokens=256, temperature=0.8):
         text_embeds = self.wte(x)
-        combined_embeds = torch.cat([visual_embeds, text_embeds], dim=0).unsqueeze(0)
+        if visual_embeds is not None:
+            combined_embeds = torch.cat(
+                [visual_embeds.unsqueeze(0), text_embeds], dim=1
+            )
+        else:
+            combined_embeds = text_embeds
 
         _, t, _ = combined_embeds.size()
         pos = torch.arange(0, t, dtype=torch.long, device=combined_embeds.device)
@@ -154,32 +157,29 @@ class GPT(nn.Module):
         combined_embeds, cache = self._forward_transformer_blocks(
             combined_embeds, pos, mask=mask, build_cache=True
         )
-        y = self._sample_next_token(combined_embeds, temperature)
-        position = t
-        yield y
 
+        tokens = []
         for _ in range(max_new_tokens):
-            position += 1
-            x = y
-            text_embeds = self.wte(x)
-            x, cache = self._forward_transformer_blocks(
+            y = self._sample_next_token(combined_embeds, temperature)
+            tokens.append(y)
+            text_embeds = self.wte(y)
+            combined_embeds, cache = self._forward_transformer_blocks(
                 text_embeds,
-                torch.tensor([position], dtype=torch.long, device=x.device),
+                torch.tensor([t], dtype=torch.long, device=y.device),
                 cache=cache,
             )
-            y = self._sample_next_token(text_embeds, temperature)
-            yield y
+            t += 1
+
+        return tokens
 
     def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
+        text_embeds = self.wte(x)
+        if visual_embeds is not None:
+            combined_embeds = torch.cat([visual_embeds, text_embeds], dim=1)
+        else:
+            combined_embeds = text_embeds
 
-        text_embeds = self.wte(x)  # Get text embeddings from token IDs
-        combined_embeds = torch.cat(
-            [visual_embeds, text_embeds], dim=1
-        )  # Concatenate embeddings
-
-        # Generate positional indices for the combined sequence
         batch_size, seq_length, _ = combined_embeds.shape
-
         assert (
             seq_length <= self.config.block_size
         ), f"Cannot forward sequence of length {seq_length}, block size is only {self.config.block_size}"
@@ -190,11 +190,8 @@ class GPT(nn.Module):
             .repeat(batch_size, 1)
         )
 
-        # Ensure padding_mask is in the correct shape for broadcasting
         if padding_mask is not None:
-            padding_mask = padding_mask.unsqueeze(1).unsqueeze(
-                2
-            )  # [batch_size, 1, 1, seq_length]
+            padding_mask = padding_mask.unsqueeze(1).unsqueeze(2)
 
         causal_mask = self._create_causal_mask(seq_length)
         if padding_mask is not None:
@@ -203,18 +200,14 @@ class GPT(nn.Module):
             combined_mask = causal_mask
 
         x, _ = self._forward_transformer_blocks(
-            combined_embeds, position_ids, combined_mask
+            combined_embeds, position_ids, mask=combined_mask
         )
         logits = x @ self.wte.weight.T
 
-        # Check if targets exist and compute the loss with ignore_index -100
         if targets is not None:
             vocab_size = logits.size(-1)
-            logits = logits.view(
-                -1, vocab_size
-            )  # Reshape logits to (batch_size * seq_length, vocab_size)
-            targets = targets.view(-1)  # Flatten targets to (batch_size * seq_length)
-
+            logits = logits.view(-1, vocab_size)
+            targets = targets.view(-1)
             loss = F.cross_entropy(logits, targets, ignore_index=-100)
             return logits, loss
 
@@ -235,10 +228,13 @@ def transpose_specific_layers(state_dict):
     return state_dict
 
 
-def generate_text(model: GPT, vision_embeds, tokenizer):
-    image_end_token_id = tokenizer.convert_tokens_to_ids("Ġ")
-
-    x = torch.tensor([image_end_token_id])
+def generate_text(model: GPT, tokenizer, initial_text="", vision_embeds=None):
+    if initial_text:
+        x = torch.tensor(
+            [tokenizer.encode(initial_text)], device=model.wte.weight.device
+        )
+    else:
+        x = torch.tensor([[tokenizer.bos_token_id]], device=model.wte.weight.device)
 
     tokens = []
     start = time.time()
@@ -263,4 +259,16 @@ if __name__ == "__main__":
 
     model.load_state_dict(state_dict_transposed, strict=False)
 
-    generate_text("Hello my name is", model)
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    # Generate text without vision embeddings
+    prompt = "hello my name is"
+    print(prompt, end="")
+    generate_text(model, tokenizer, initial_text=prompt)
+
+    # Optionally, provide vision embeddings if available
+    # vision_embeds = None  # Replace with actual vision embeddings if available
+    # print("Generation with vision embeddings:")
+    # generate_text(
+    #     model, tokenizer, initial_text="Once upon a time", vision_embeds=vision_embeds
+    # )
