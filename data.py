@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
@@ -162,14 +163,17 @@ def train_model(
     gradient_accumulation_steps,
     clip_grad_norm,
 ):
-    model.eval()
+    model.train()
     vision_encoder.eval()
     connector.train()
 
     for epoch in range(epochs):
         epoch_loss = 0
         optimizer.zero_grad()
+
         for i, (images, captions) in enumerate(data_loader):
+            start_time = time.time()  # Start timer
+
             image_features = vision_encoder.encode_image(images)
             vision_embed = connector(image_features)
             num_patches = vision_embed.size(1)
@@ -191,8 +195,12 @@ def train_model(
                 scheduler.step()
 
             epoch_loss += loss.item() * gradient_accumulation_steps
+
+            end_time = time.time()  # End timer
+            iteration_time = end_time - start_time  # Calculate iteration time
+
             print(
-                f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps} - Learning Rate: {scheduler.get_last_lr()[0]:.6f}"
+                f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {scheduler.get_last_lr()[0]:.9f} - Iter: {iteration_time:.4f} sec"
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
@@ -200,8 +208,9 @@ def train_model(
                 show_image(images[0])
 
         print(
-            f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader)}"
+            f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
         )
+
     print("Training complete.")
 
 
@@ -226,7 +235,7 @@ if __name__ == "__main__":
 
     # Model and Tokenizer Initialization
     model, tokenizer = load_model_and_tokenizer()
-    freeze_model_parameters(model)
+    # freeze_model_parameters(model)
 
     # Training Components
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
