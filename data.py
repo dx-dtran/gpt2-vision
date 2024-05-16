@@ -4,7 +4,7 @@ import time
 import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Tokenizer
 from PIL import Image
@@ -81,12 +81,9 @@ def show_images(batch_images):
 
 
 def show_image(image_tensor):
-    # Detach the tensor from the graph, convert to numpy array, and transpose to (H, W, C)
     image = image_tensor.cpu().numpy().transpose(1, 2, 0)
-
-    # Since the image is in range [0, 1] we can directly show it
     plt.imshow(image)
-    plt.axis("off")  # Hide axis
+    plt.axis("off")
     plt.show()
 
 
@@ -105,11 +102,11 @@ def freeze_model_parameters(model):
         param.requires_grad = False
 
 
-def prepare_training_components(learning_rate, step_size, gamma):
+def prepare_training_components(learning_rate, t_max):
     vision_encoder = load_clip()
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(connector.parameters(), lr=learning_rate)
-    scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
+    scheduler = CosineAnnealingLR(optimizer, T_max=t_max)
     return vision_encoder, connector, optimizer, scheduler
 
 
@@ -177,9 +174,9 @@ def train_model(
         optimizer.zero_grad()
 
         for i, (images, captions) in enumerate(data_loader):
-            start_time = time.time()  # Start timer
+            start_time = time.time()
 
-            images.to(device)
+            images = images.to(device)
 
             image_features = vision_encoder.encode_image(images)
             vision_embed = connector(image_features)
@@ -207,8 +204,8 @@ def train_model(
 
             epoch_loss += loss.item() * gradient_accumulation_steps
 
-            end_time = time.time()  # End timer
-            iteration_time = end_time - start_time  # Calculate iteration time
+            end_time = time.time()
+            iteration_time = end_time - start_time
 
             print(
                 f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {scheduler.get_last_lr()[0]:.9f} - Iter: {iteration_time:.4f} sec"
@@ -226,36 +223,29 @@ def train_model(
 
 
 if __name__ == "__main__":
-    # Configuration
     BATCH_SIZE = 32
     EPOCHS = 5
-    LEARNING_RATE = 5e-5
-    STEP_SIZE = 1
-    GAMMA = 0.9
+    LEARNING_RATE = 1e-4
+    T_MAX = 10
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 4
     coco_root_dir = "../coco/val2017"
     coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Data Loading
     transform = get_transform(224)
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
     coco_dataloader = DataLoader(
         coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4
     )
 
-    # Model and Tokenizer Initialization
     model, tokenizer = load_model_and_tokenizer()
-    # freeze_model_parameters(model)
 
-    # Training Components
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
-        LEARNING_RATE, STEP_SIZE, GAMMA
+        LEARNING_RATE, T_MAX
     )
     freeze_model_parameters(vision_encoder)
 
-    # Training Loop
     train_model(
         model,
         connector,
