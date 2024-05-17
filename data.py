@@ -158,7 +158,6 @@ def train_model(
     epochs,
     batch_size,
     gradient_accumulation_steps,
-    clip_grad_norm,
     device,
 ):
     model.to(device)
@@ -182,6 +181,11 @@ def train_model(
             vision_embed = connector(image_features)
             num_patches = vision_embed.size(1)
 
+            # Ensure captions list length matches the batch size
+            if len(captions) != batch_size:
+                print(f"Skipping batch {i + 1} due to mismatched batch size.")
+                continue
+
             x_train_padded, y_train, padding_mask = tokenize_and_prepare_batches(
                 captions, tokenizer, batch_size, num_patches
             )
@@ -191,13 +195,15 @@ def train_model(
             padding_mask = padding_mask.to(device)
 
             logits, loss = model(
-                x_train_padded, vision_embed, targets=y_train, padding_mask=padding_mask
+                x_train_padded,
+                vision_embed,
+                targets=y_train,
+                padding_mask=padding_mask,
             )
             loss = loss / gradient_accumulation_steps
             loss.backward()
 
             if (i + 1) % gradient_accumulation_steps == 0:
-                torch.nn.utils.clip_grad_norm_(connector.parameters(), clip_grad_norm)
                 optimizer.step()
                 optimizer.zero_grad()
                 scheduler.step()
@@ -213,7 +219,6 @@ def train_model(
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
-                show_image(images[0])
 
         print(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
@@ -257,6 +262,5 @@ if __name__ == "__main__":
         EPOCHS,
         BATCH_SIZE,
         GRADIENT_ACCUMULATION_STEPS,
-        CLIP_GRAD_NORM,
         device,
     )
