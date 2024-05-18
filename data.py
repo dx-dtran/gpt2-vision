@@ -257,9 +257,7 @@ def train_model(
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
-                model.eval()
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
-                model.train()
 
             del (
                 images,
@@ -301,8 +299,8 @@ if __name__ == "__main__":
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
         LEARNING_RATE, T_MAX
     )
-    # freeze_model_parameters(vision_encoder)
-    # freeze_model_parameters(model)
+    freeze_model_parameters(vision_encoder)
+    freeze_model_parameters(model)
 
     # Redirect print statements to the logger
     logger, log_filename = setup_logger()
