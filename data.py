@@ -270,7 +270,7 @@ def train_model(
 if __name__ == "__main__":
     BATCH_SIZE = 32
     EPOCHS = 5
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 1e-4
     T_MAX = 10
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 4

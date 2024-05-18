@@ -114,14 +114,13 @@ class GPT(nn.Module):
         x = self.drop(x)
         kv_cache = []
 
-        if cache is not None:
-            for i in range(len(cache)):
-                x, cache[i] = self.h[i](x, mask=None, cache=cache[i])
-        else:
-            for block in self.h:
-                x, curr_cache = block(x, mask=mask)
-                if build_cache:
-                    kv_cache.append(curr_cache)
+        for i, block in enumerate(self.h):
+            if cache is not None and i < len(cache):
+                x, new_cache = block(x, mask=mask, cache=cache[i])
+            else:
+                x, new_cache = block(x, mask=mask)
+            if build_cache:
+                kv_cache.append(new_cache)
 
         x = self.ln_f(x)
         return x, kv_cache if build_cache else cache
@@ -163,7 +162,7 @@ class GPT(nn.Module):
 
         tokens = []
         for _ in range(max_new_tokens):
-            y = self._sample_next_token(combined_embeds, temperature)
+            y = self._sample_next_token(combined_embeds[:, -1:, :], temperature)
             tokens.append(y)
             text_embeds = self.wte(y)
 
@@ -173,9 +172,12 @@ class GPT(nn.Module):
             ).unsqueeze(0)
             text_embeds = text_embeds + pos_emb
 
+            # Update combined_embeds with the new token embedding
             combined_embeds = torch.cat([combined_embeds, text_embeds], dim=1)
-            combined_embeds, cache = self._forward_transformer_blocks(
-                combined_embeds, cache=cache
+
+            # Pass only the new token through transformer blocks with cache
+            combined_embeds[:, -1:, :], cache = self._forward_transformer_blocks(
+                combined_embeds[:, -1:, :], cache=cache
             )
             t += 1
 
