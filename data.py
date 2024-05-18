@@ -1,6 +1,8 @@
 import os
+import sys
 import json
 import time
+import logging
 import matplotlib.pyplot as plt
 import torch
 import torch.optim as optim
@@ -19,6 +21,44 @@ from torchvision.transforms import (
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
+
+
+def setup_logger():
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    log_filename = f"training_log_{timestamp}.log"
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.INFO)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger, log_filename
+
+
+class LoggerWriter:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+        self.buffer = ""
+
+    def write(self, message):
+        if message != "\n":
+            self.buffer += message
+
+    def flush(self):
+        if self.buffer:
+            self.logger.log(self.level, self.buffer.strip())
+            self.buffer = ""
 
 
 def convert_image_to_rgb(image):
@@ -165,7 +205,7 @@ def train_model(
     connector.to(device)
 
     model.train()
-    vision_encoder.eval()
+    vision_encoder.train()
     connector.train()
 
     for epoch in range(epochs):
@@ -183,7 +223,7 @@ def train_model(
 
             # Ensure captions list length matches the batch size
             if len(captions) != batch_size:
-                print(f"Skipping batch {i + 1} due to mismatched batch size.")
+                logger.info(f"Skipping batch {i + 1} due to mismatched batch size.")
                 continue
 
             x_train_padded, y_train, padding_mask = tokenize_and_prepare_batches(
@@ -213,18 +253,18 @@ def train_model(
             end_time = time.time()
             iteration_time = end_time - start_time
 
-            print(
+            logger.info(
                 f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {scheduler.get_last_lr()[0]:.9f} - Iter: {iteration_time:.4f} sec"
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
 
-        print(
+        logger.info(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
         )
 
-    print("Training complete.")
+    logger.info("Training complete.")
 
 
 if __name__ == "__main__":
@@ -249,7 +289,12 @@ if __name__ == "__main__":
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
         LEARNING_RATE, T_MAX
     )
-    freeze_model_parameters(vision_encoder)
+    # freeze_model_parameters(vision_encoder)
+
+    # Redirect print statements to the logger
+    logger, log_filename = setup_logger()
+    sys.stdout = LoggerWriter(logger, logging.INFO)
+    sys.stderr = LoggerWriter(logger, logging.ERROR)
 
     train_model(
         model,
@@ -264,3 +309,5 @@ if __name__ == "__main__":
         GRADIENT_ACCUMULATION_STEPS,
         device,
     )
+
+    logger.info(f"Log file: {log_filename}")
