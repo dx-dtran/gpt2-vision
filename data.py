@@ -204,8 +204,8 @@ def train_model(
     vision_encoder.to(device)
     connector.to(device)
 
-    model.train()
-    vision_encoder.train()
+    model.eval()
+    vision_encoder.eval()
     connector.train()
 
     for epoch in range(epochs):
@@ -270,7 +270,7 @@ def train_model(
 if __name__ == "__main__":
     BATCH_SIZE = 32
     EPOCHS = 5
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 1e-5
     T_MAX = 10
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 4
@@ -289,7 +289,8 @@ if __name__ == "__main__":
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
         LEARNING_RATE, T_MAX
     )
-    # freeze_model_parameters(vision_encoder)
+    freeze_model_parameters(vision_encoder)
+    freeze_model_parameters(model)
 
     # Redirect print statements to the logger
     logger, log_filename = setup_logger()

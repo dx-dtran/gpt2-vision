@@ -110,11 +110,8 @@ class GPT(nn.Module):
             config.n_embd, eps=1e-5, elementwise_affine=config.bias
         )
 
-    def _forward_transformer_blocks(
-        self, x, pos, mask=None, cache=None, build_cache=False
-    ):
-        pos_emb = self.wpe(pos)
-        x = self.drop(x + pos_emb)
+    def _forward_transformer_blocks(self, x, mask=None, cache=None, build_cache=False):
+        x = self.drop(x)
         kv_cache = []
 
         if cache is not None:
@@ -143,6 +140,13 @@ class GPT(nn.Module):
 
     def generate(self, x, visual_embeds=None, max_new_tokens=256, temperature=0.8):
         text_embeds = self.wte(x)
+
+        # Apply positional embeddings to text tokens only
+        batch_size, text_len, _ = text_embeds.size()
+        pos_ids = torch.arange(0, text_len, dtype=torch.long, device=text_embeds.device)
+        pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(batch_size, text_len, -1)
+        text_embeds = text_embeds + pos_emb
+
         if visual_embeds is not None:
             combined_embeds = torch.cat(
                 [visual_embeds.unsqueeze(0), text_embeds], dim=1
@@ -151,11 +155,10 @@ class GPT(nn.Module):
             combined_embeds = text_embeds
 
         _, t, _ = combined_embeds.size()
-        pos = torch.arange(0, t, dtype=torch.long, device=combined_embeds.device)
         mask = self._create_causal_mask(t)
 
         combined_embeds, cache = self._forward_transformer_blocks(
-            combined_embeds, pos, mask=mask, build_cache=True
+            combined_embeds, mask=mask, build_cache=True
         )
 
         tokens = []
@@ -163,10 +166,16 @@ class GPT(nn.Module):
             y = self._sample_next_token(combined_embeds, temperature)
             tokens.append(y)
             text_embeds = self.wte(y)
+
+            # Apply positional embeddings to the new token
+            pos_emb = self.wpe(
+                torch.tensor([t], dtype=torch.long, device=y.device)
+            ).unsqueeze(0)
+            text_embeds = text_embeds + pos_emb
+
+            combined_embeds = torch.cat([combined_embeds, text_embeds], dim=1)
             combined_embeds, cache = self._forward_transformer_blocks(
-                text_embeds,
-                torch.tensor([t], dtype=torch.long, device=y.device),
-                cache=cache,
+                combined_embeds, cache=cache
             )
             t += 1
 
@@ -174,6 +183,13 @@ class GPT(nn.Module):
 
     def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
         text_embeds = self.wte(x)
+
+        # Apply positional embeddings to text tokens only
+        batch_size, text_len, _ = text_embeds.size()
+        pos_ids = torch.arange(0, text_len, dtype=torch.long, device=text_embeds.device)
+        pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(batch_size, text_len, -1)
+        text_embeds = text_embeds + pos_emb
+
         if visual_embeds is not None:
             combined_embeds = torch.cat([visual_embeds, text_embeds], dim=1)
         else:
@@ -184,12 +200,6 @@ class GPT(nn.Module):
             seq_length <= self.config.block_size
         ), f"Cannot forward sequence of length {seq_length}, block size is only {self.config.block_size}"
 
-        position_ids = (
-            torch.arange(0, seq_length, device=combined_embeds.device)
-            .unsqueeze(0)
-            .repeat(batch_size, 1)
-        )
-
         if padding_mask is not None:
             padding_mask = padding_mask.unsqueeze(1).unsqueeze(2)
 
@@ -199,9 +209,7 @@ class GPT(nn.Module):
         else:
             combined_mask = causal_mask
 
-        x, _ = self._forward_transformer_blocks(
-            combined_embeds, position_ids, mask=combined_mask
-        )
+        x, _ = self._forward_transformer_blocks(combined_embeds, mask=combined_mask)
         logits = x @ self.wte.weight.T
 
         if targets is not None:
@@ -269,6 +277,4 @@ if __name__ == "__main__":
     # Optionally, provide vision embeddings if available
     # vision_embeds = None  # Replace with actual vision embeddings if available
     # print("Generation with vision embeddings:")
-    # generate_text(
-    #     model, tokenizer, initial_text="Once upon a time", vision_embeds=vision_embeds
-    # )
+    # generate_text(model, tokenizer, initial_text="Once upon a time", vision_embeds=vision_embeds)
