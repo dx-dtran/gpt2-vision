@@ -221,7 +221,6 @@ def train_model(
             vision_embed = connector(image_features)
             num_patches = vision_embed.size(1)
 
-            # Ensure captions list length matches the batch size
             if len(captions) != batch_size:
                 logger.info(f"Skipping batch {i + 1} due to mismatched batch size.")
                 continue
@@ -260,9 +259,20 @@ def train_model(
             if (i + 1) % 100 == 0 or (i + 1) == 1:
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
 
+            del (
+                images,
+                image_features,
+                vision_embed,
+                x_train_padded,
+                y_train,
+                padding_mask,
+            )
+            torch.cuda.empty_cache()
+
         logger.info(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
         )
+        torch.cuda.empty_cache()
 
     logger.info("Training complete.")
 
@@ -274,8 +284,8 @@ if __name__ == "__main__":
     T_MAX = 10
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 4
-    coco_root_dir = "../coco/val2017"
-    coco_ann_file = "../coco/annotations/captions_val2017.json"
+    coco_root_dir = "../coco/train2017"
+    coco_ann_file = "../coco/annotations/captions_train2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     transform = get_transform(224)
@@ -289,8 +299,8 @@ if __name__ == "__main__":
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
         LEARNING_RATE, T_MAX
     )
-    freeze_model_parameters(vision_encoder)
-    freeze_model_parameters(model)
+    # freeze_model_parameters(vision_encoder)
+    # freeze_model_parameters(model)
 
     # Redirect print statements to the logger
     logger, log_filename = setup_logger()
