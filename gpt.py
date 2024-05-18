@@ -140,7 +140,6 @@ class GPT(nn.Module):
     def generate(self, x, visual_embeds=None, max_new_tokens=256, temperature=0.8):
         text_embeds = self.wte(x)
 
-        # Apply positional embeddings to text tokens only
         batch_size, text_len, _ = text_embeds.size()
         pos_ids = torch.arange(0, text_len, dtype=torch.long, device=text_embeds.device)
         pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(batch_size, text_len, -1)
@@ -166,13 +165,11 @@ class GPT(nn.Module):
             tokens.append(y)
             text_embeds = self.wte(y)
 
-            # Apply positional embeddings to the new token
             pos_emb = self.wpe(
                 torch.tensor([t], dtype=torch.long, device=y.device)
             ).unsqueeze(0)
             text_embeds = text_embeds + pos_emb
 
-            # Update combined_embeds with the new token embedding
             combined_embeds = torch.cat([combined_embeds, text_embeds], dim=1)
 
             # Pass only the new token through transformer blocks with cache
@@ -180,6 +177,9 @@ class GPT(nn.Module):
                 combined_embeds[:, -1:, :], cache=cache
             )
             t += 1
+
+        del cache  # Clear the cache explicitly
+        torch.cuda.empty_cache()  # Free up unused memory
 
         return tokens
 

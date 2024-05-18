@@ -257,7 +257,9 @@ def train_model(
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
+                model.eval()
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
+                model.train()
 
             del (
                 images,
