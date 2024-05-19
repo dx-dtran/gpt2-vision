@@ -20,7 +20,7 @@ from torchvision.transforms import (
     Compose,
 )
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
-from clip import load_clip
+from clip_helper import load
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
@@ -146,13 +146,16 @@ def freeze_model_parameters(model):
 
 
 def prepare_training_components(learning_rate, weight_decay, t_max):
-    vision_encoder = load_clip()
+    # vision_encoder = load_clip()
+    vision_encoder, preprocess = load(
+        "ViT-B/32", device="cuda" if torch.cuda.is_available() else "cpu"
+    )
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=t_max)
-    return vision_encoder, connector, optimizer, scheduler
+    return vision_encoder, preprocess, connector, optimizer, scheduler
 
 
 def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
@@ -274,6 +277,7 @@ def train_model(
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
                 generate_text(model, tokenizer, vision_embeds=vision_embed[0])
+                # show_image(images[0])
 
             del (
                 images,
@@ -305,20 +309,19 @@ if __name__ == "__main__":
     coco_root_dir = "../coco/train2017"
     coco_ann_file = "../coco/annotations/captions_train2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vision_encoder, preprocess, connector, optimizer, scheduler = (
+        prepare_training_components(LEARNING_RATE, WEIGHT_DECAY, 18000 * EPOCHS)
+    )
+    freeze_model_parameters(vision_encoder)
 
-    transform = get_transform(224)
-    coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
+    # transform = get_transform(224)
+    coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
     coco_dataloader = DataLoader(
         coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
-    T_MAX = len(coco_dataloader) * EPOCHS
+    # T_MAX = len(coco_dataloader) * EPOCHS
     model, tokenizer = load_model_and_tokenizer()
-
-    vision_encoder, connector, optimizer, scheduler = prepare_training_components(
-        LEARNING_RATE, WEIGHT_DECAY, T_MAX
-    )
-    freeze_model_parameters(vision_encoder)
     freeze_model_parameters(model)
 
     # Redirect print statements to the logger
