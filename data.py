@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import gc
 import time
 import logging
 import matplotlib.pyplot as plt
@@ -156,34 +157,39 @@ def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
     pad_token_id = 0
 
     tokenized_captions = [
-        torch.tensor(tokenizer.encode(caption)) for caption in captions
+        torch.tensor(tokenizer.encode(caption)).detach() for caption in captions
     ]
     x_train = [
-        torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]])
+        torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]]).detach()
         for i in range(batch_size)
     ]
     max_length = max([seq.size(0) for seq in x_train])
     x_train_padded = torch.full(
         (batch_size, max_length), pad_token_id, dtype=torch.long
-    )
+    ).detach()
     for i, seq in enumerate(x_train):
         x_train_padded[i, : seq.size(0)] = seq
 
-    y_train = torch.full((batch_size, x_train_padded.size(1)), -100)
+    y_train = torch.full((batch_size, x_train_padded.size(1)), -100).detach()
     for i in range(batch_size):
         current_sequence = tokenized_captions[i]
         shifted_sequence = torch.cat(
-            [current_sequence, torch.tensor([end_text_token_id], dtype=torch.long)]
-        )
+            [
+                current_sequence,
+                torch.tensor([end_text_token_id], dtype=torch.long).detach(),
+            ]
+        ).detach()
         y_train[i, : shifted_sequence.size(0)] = shifted_sequence
 
-    vision_embed_mask = torch.full((batch_size, num_patches), -100)
-    y_train = torch.cat([vision_embed_mask, y_train], dim=1)
+    vision_embed_mask = torch.full((batch_size, num_patches), -100).detach()
+    y_train = torch.cat([vision_embed_mask, y_train], dim=1).detach()
 
-    padding_mask = (x_train_padded != pad_token_id).long()
-    prefix_padding_mask = torch.full((batch_size, num_patches), 1)
-    padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1)
+    padding_mask = (x_train_padded != pad_token_id).long().detach()
+    prefix_padding_mask = torch.full((batch_size, num_patches), 1).detach()
+    padding_mask = torch.cat([prefix_padding_mask, padding_mask], dim=1).detach()
 
+    del tokenized_captions, x_train, current_sequence, shifted_sequence
+    gc.collect()
     return x_train_padded, y_train, padding_mask
 
 
@@ -223,6 +229,9 @@ def train_model(
 
             if len(captions) != batch_size:
                 logger.info(f"Skipping batch {i + 1} due to mismatched batch size.")
+                del images, image_features, vision_embed
+                torch.cuda.empty_cache()
+                gc.collect()
                 continue
 
             x_train_padded, y_train, padding_mask = tokenize_and_prepare_batches(
@@ -268,11 +277,13 @@ def train_model(
                 padding_mask,
             )
             torch.cuda.empty_cache()
+            gc.collect()
 
         logger.info(
             f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
         )
         torch.cuda.empty_cache()
+        gc.collect()
 
     logger.info("Training complete.")
 
