@@ -158,6 +158,7 @@ class GPT(nn.Module):
         combined_embeds, cache = self._forward_transformer_blocks(
             combined_embeds, mask=mask, build_cache=True
         )
+        combined_embeds = combined_embeds.detach()
 
         tokens = []
         for _ in range(max_new_tokens):
@@ -176,6 +177,9 @@ class GPT(nn.Module):
             combined_embeds[:, -1:, :], cache = self._forward_transformer_blocks(
                 combined_embeds[:, -1:, :], cache=cache
             )
+            combined_embeds = (
+                combined_embeds.detach()
+            )  # Detach to avoid keeping old graph references
             t += 1
 
         del cache  # Clear the cache explicitly

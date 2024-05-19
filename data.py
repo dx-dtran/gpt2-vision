@@ -302,7 +302,7 @@ if __name__ == "__main__":
     transform = get_transform(224)
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
     coco_dataloader = DataLoader(
-        coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4
+        coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
     model, tokenizer = load_model_and_tokenizer()
