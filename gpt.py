@@ -262,6 +262,8 @@ def generate_text(model: GPT, tokenizer, initial_text="", vision_embeds=None):
         f"time: {end - start:.3f} s, tokens per second: {len(tokens) / (end - start)}"
     )
     print("---------------")
+    generated_text = "".join([tokenizer.decode([token]) for token in tokens])
+    return generated_text
 
 
 if __name__ == "__main__":

@@ -5,8 +5,10 @@ import gc
 import time
 import logging
 import matplotlib.pyplot as plt
+import pytz
 import torch
 import torch.optim as optim
+from datetime import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Tokenizer
@@ -26,8 +28,21 @@ from vision_language_connector import VisionLanguageConnector
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 
+def save_image_and_caption_to_png(folder, image_tensor, caption, iteration):
+    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
+    plt.figure(figsize=(8, 8))
+    plt.imshow(image)
+    plt.axis("off")
+    plt.title(f"Iteration {iteration}: {caption}", wrap=True)
+    png_filename = os.path.join(folder, f"iteration_{iteration}.png")
+    plt.savefig(png_filename)
+    plt.close()
+
+
 def setup_logger():
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    pacific_time = pytz.timezone("US/Pacific")
+    timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"training_log_{timestamp}.log"
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -222,6 +237,12 @@ def train_model(
     vision_encoder.eval()
     connector.train()
 
+    # Get the current time in Pacific Time and create a timestamped folder
+    pacific_time = pytz.timezone("US/Pacific")
+    timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
+    output_folder = f"training_results_{timestamp}"
+    os.makedirs(output_folder, exist_ok=True)
+
     for epoch in range(epochs):
         epoch_loss = 0
         optimizer.zero_grad()
@@ -283,8 +304,12 @@ def train_model(
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
-                generate_text(model, tokenizer, vision_embeds=vision_embed[0])
-                # show_image(images[0])
+                generated_text = generate_text(
+                    model, tokenizer, vision_embeds=vision_embed[0]
+                )
+                save_image_and_caption_to_png(
+                    output_folder, images[0], generated_text, i + 1
+                )
 
             del (
                 images,
