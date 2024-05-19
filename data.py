@@ -308,11 +308,11 @@ def train_model(
 
 if __name__ == "__main__":
     BATCH_SIZE = 32
-    EPOCHS = 1
+    EPOCHS = 5
     LEARNING_RATE = 1e-4
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
-    GRADIENT_ACCUMULATION_STEPS = 4
+    GRADIENT_ACCUMULATION_STEPS = 1
     coco_root_dir = "../coco/train2017"
     coco_ann_file = "../coco/annotations/captions_train2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
