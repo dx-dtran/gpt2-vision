@@ -231,8 +231,15 @@ def train_model(
 
             images = images.to(device)
 
+            # Ensure image features are on the correct device and have the correct dtype
             image_features = vision_encoder.encode_image(images)
+            image_features = image_features.to(device).to(
+                next(connector.parameters()).dtype
+            )
             vision_embed = connector(image_features)
+            vision_embed = vision_embed.to(device).to(
+                next(connector.parameters()).dtype
+            )
             num_patches = vision_embed.size(1)
 
             if len(captions) != batch_size:
