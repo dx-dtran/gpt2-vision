@@ -23,6 +23,8 @@ from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
+
 
 def setup_logger():
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -143,10 +145,12 @@ def freeze_model_parameters(model):
         param.requires_grad = False
 
 
-def prepare_training_components(learning_rate, t_max):
+def prepare_training_components(learning_rate, weight_decay, t_max):
     vision_encoder = load_clip()
     connector = VisionLanguageConnector()
-    optimizer = optim.AdamW(connector.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(
+        connector.parameters(), lr=learning_rate, weight_decay=weight_decay
+    )
     scheduler = CosineAnnealingLR(optimizer, T_max=t_max)
     return vision_encoder, connector, optimizer, scheduler
 
@@ -204,6 +208,7 @@ def train_model(
     epochs,
     batch_size,
     gradient_accumulation_steps,
+    max_grad_norm,
     device,
 ):
     model.to(device)
@@ -251,6 +256,8 @@ def train_model(
             loss = loss / gradient_accumulation_steps
             loss.backward()
 
+            torch.nn.utils.clip_grad_norm_(connector.parameters(), max_grad_norm)
+
             if (i + 1) % gradient_accumulation_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
@@ -290,9 +297,9 @@ def train_model(
 
 if __name__ == "__main__":
     BATCH_SIZE = 32
-    EPOCHS = 5
+    EPOCHS = 1
     LEARNING_RATE = 1e-4
-    T_MAX = 10
+    WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 4
     coco_root_dir = "../coco/train2017"
@@ -305,10 +312,11 @@ if __name__ == "__main__":
         coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
+    T_MAX = len(coco_dataloader) * EPOCHS
     model, tokenizer = load_model_and_tokenizer()
 
     vision_encoder, connector, optimizer, scheduler = prepare_training_components(
-        LEARNING_RATE, T_MAX
+        LEARNING_RATE, WEIGHT_DECAY, T_MAX
     )
     freeze_model_parameters(vision_encoder)
     freeze_model_parameters(model)
@@ -329,6 +337,7 @@ if __name__ == "__main__":
         EPOCHS,
         BATCH_SIZE,
         GRADIENT_ACCUMULATION_STEPS,
+        CLIP_GRAD_NORM,
         device,
     )
 
