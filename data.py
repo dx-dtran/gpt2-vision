@@ -39,6 +39,11 @@ def save_image_and_caption_to_png(folder, image_tensor, caption, iteration):
     plt.close()
 
 
+def save_connector_weights(connector, folder, iteration):
+    filename = os.path.join(folder, f"connector_weights_{iteration}.pt")
+    torch.save(connector.state_dict(), filename)
+
+
 def setup_logger():
     # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     pacific_time = pytz.timezone("US/Pacific")
@@ -243,6 +248,9 @@ def train_model(
     output_folder = f"training_results_{timestamp}"
     os.makedirs(output_folder, exist_ok=True)
 
+    weights_output_folder = f"weights_results_{timestamp}"
+    os.makedirs(weights_output_folder, exist_ok=True)
+
     for epoch in range(epochs):
         epoch_loss = 0
         optimizer.zero_grad()
@@ -310,6 +318,9 @@ def train_model(
                 save_image_and_caption_to_png(
                     output_folder, images[0], generated_text, i + 1
                 )
+
+            if (i + 1) % 1000 == 0:
+                save_connector_weights(connector, weights_output_folder, i + 1)
 
             del (
                 images,
