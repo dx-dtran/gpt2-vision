@@ -242,7 +242,9 @@ def transpose_specific_layers(state_dict):
     return state_dict
 
 
-def generate_text(model: GPT, tokenizer, initial_text="", vision_embeds=None):
+def generate_text(
+    model: GPT, tokenizer, initial_text="", vision_embeds=None, temperature=0.8
+):
     if initial_text:
         x = torch.tensor(
             [tokenizer.encode(initial_text)], device=model.wte.weight.device
@@ -252,7 +254,9 @@ def generate_text(model: GPT, tokenizer, initial_text="", vision_embeds=None):
 
     tokens = []
     start = time.time()
-    for token in model.generate(x, vision_embeds, max_new_tokens=64):
+    for token in model.generate(
+        x, vision_embeds, max_new_tokens=64, temperature=temperature
+    ):
         tok = token.item()
         tokens.append(tok)
         print(tokenizer.decode([tok]), end="", flush=True)
@@ -262,8 +266,9 @@ def generate_text(model: GPT, tokenizer, initial_text="", vision_embeds=None):
         f"time: {end - start:.3f} s, tokens per second: {len(tokens) / (end - start)}"
     )
     print("---------------")
-    generated_text = "".join([tokenizer.decode([token]) for token in tokens])
-    return generated_text
+    generated_text = [tokenizer.decode([token]) for token in tokens]
+    returned_text = "".join([token for token in generated_text if token != "\n"])
+    return returned_text
 
 
 if __name__ == "__main__":

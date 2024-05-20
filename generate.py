@@ -66,7 +66,9 @@ def process_images_and_generate_text(
                 next(connector.parameters()).dtype
             )
 
-        generated_text = generate_text(model, tokenizer, vision_embeds=vision_embed[0])
+        generated_text = generate_text(
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.8
+        )
 
         save_image_and_caption_to_png(
             output_folder, image_tensor[0], generated_text, image_filename
@@ -87,10 +89,10 @@ def save_image_and_caption_to_png(folder, image_tensor, caption, image_filename)
 
 
 if __name__ == "__main__":
-    image_folder = "../coco/val2017"
-    output_folder = "generations"
+    image_folder = "screenshots"
+    output_folder = "screenshots_7000_temp08"
     gpt_model_path = "gpt2.bin"
-    connector_weights_path = "connector_weights_40.pt"
+    connector_weights_path = "connector_weights_7000.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_model_path, connector_weights_path
