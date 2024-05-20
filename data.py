@@ -5,8 +5,10 @@ import gc
 import time
 import logging
 import matplotlib.pyplot as plt
+import pytz
 import torch
 import torch.optim as optim
+from datetime import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Tokenizer
@@ -20,14 +22,32 @@ from torchvision.transforms import (
     Compose,
 )
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
-from clip import load_clip
+from clip_helper import load
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
 
+def save_image_and_caption_to_png(folder, image_tensor, caption, iteration):
+    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
+    plt.figure(figsize=(8, 8))
+    plt.imshow(image)
+    plt.axis("off")
+    plt.title(f"Iteration {iteration}: {caption}", wrap=True)
+    png_filename = os.path.join(folder, f"iteration_{iteration}.png")
+    plt.savefig(png_filename)
+    plt.close()
+
+
+def save_connector_weights(connector, folder, iteration):
+    filename = os.path.join(folder, f"connector_weights_{iteration}.pt")
+    torch.save(connector.state_dict(), filename)
+
+
 def setup_logger():
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    pacific_time = pytz.timezone("US/Pacific")
+    timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"training_log_{timestamp}.log"
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -146,13 +166,16 @@ def freeze_model_parameters(model):
 
 
 def prepare_training_components(learning_rate, weight_decay, t_max):
-    vision_encoder = load_clip()
+    # vision_encoder = load_clip()
+    vision_encoder, preprocess = load(
+        "ViT-B/32", device="cuda" if torch.cuda.is_available() else "cpu"
+    )
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=t_max)
-    return vision_encoder, connector, optimizer, scheduler
+    return vision_encoder, preprocess, connector, optimizer, scheduler
 
 
 def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
@@ -219,6 +242,15 @@ def train_model(
     vision_encoder.eval()
     connector.train()
 
+    # Get the current time in Pacific Time and create a timestamped folder
+    pacific_time = pytz.timezone("US/Pacific")
+    timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
+    output_folder = f"training_results_{timestamp}"
+    os.makedirs(output_folder, exist_ok=True)
+
+    weights_output_folder = f"weights_results_{timestamp}"
+    os.makedirs(weights_output_folder, exist_ok=True)
+
     for epoch in range(epochs):
         epoch_loss = 0
         optimizer.zero_grad()
@@ -228,8 +260,15 @@ def train_model(
 
             images = images.to(device)
 
+            # Ensure image features are on the correct device and have the correct dtype
             image_features = vision_encoder.encode_image(images)
+            image_features = image_features.to(device).to(
+                next(connector.parameters()).dtype
+            )
             vision_embed = connector(image_features)
+            vision_embed = vision_embed.to(device).to(
+                next(connector.parameters()).dtype
+            )
             num_patches = vision_embed.size(1)
 
             if len(captions) != batch_size:
@@ -273,7 +312,15 @@ def train_model(
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
-                generate_text(model, tokenizer, vision_embeds=vision_embed[0])
+                generated_text = generate_text(
+                    model, tokenizer, vision_embeds=vision_embed[0]
+                )
+                save_image_and_caption_to_png(
+                    output_folder, images[0], generated_text, i + 1
+                )
+
+            if (i + 1) % 1000 == 0:
+                save_connector_weights(connector, weights_output_folder, i + 1)
 
             del (
                 images,
@@ -297,28 +344,27 @@ def train_model(
 
 if __name__ == "__main__":
     BATCH_SIZE = 32
-    EPOCHS = 1
+    EPOCHS = 5
     LEARNING_RATE = 1e-4
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
-    GRADIENT_ACCUMULATION_STEPS = 4
+    GRADIENT_ACCUMULATION_STEPS = 1
     coco_root_dir = "../coco/train2017"
     coco_ann_file = "../coco/annotations/captions_train2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vision_encoder, preprocess, connector, optimizer, scheduler = (
+        prepare_training_components(LEARNING_RATE, WEIGHT_DECAY, 18000 * EPOCHS)
+    )
+    freeze_model_parameters(vision_encoder)
 
-    transform = get_transform(224)
-    coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=transform)
+    # transform = get_transform(224)
+    coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
     coco_dataloader = DataLoader(
         coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
-    T_MAX = len(coco_dataloader) * EPOCHS
+    # T_MAX = len(coco_dataloader) * EPOCHS
     model, tokenizer = load_model_and_tokenizer()
-
-    vision_encoder, connector, optimizer, scheduler = prepare_training_components(
-        LEARNING_RATE, WEIGHT_DECAY, T_MAX
-    )
-    freeze_model_parameters(vision_encoder)
     freeze_model_parameters(model)
 
     # Redirect print statements to the logger
