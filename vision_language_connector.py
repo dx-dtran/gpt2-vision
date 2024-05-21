@@ -6,7 +6,7 @@ class VisionLanguageConnector(nn.Module):
         super(VisionLanguageConnector, self).__init__()
 
         self.vision_embed_dim = vision_embed_dim
-        hidden_dim = self.vision_embed_dim * 4
+        hidden_dim = self.vision_embed_dim * 2
 
         self.layers = nn.Sequential(
             nn.Linear(self.vision_embed_dim, hidden_dim),
