@@ -22,7 +22,7 @@ from torchvision.transforms import (
     Compose,
 )
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
-from clip_model_clean import load_clip
+from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
