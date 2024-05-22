@@ -1,8 +1,5 @@
 torch
 torchvision
-pillow
-numpy
-tqdm
 tiktoken
 matplotlib
 transformers
