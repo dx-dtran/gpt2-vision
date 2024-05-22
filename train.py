@@ -22,7 +22,7 @@ from torchvision.transforms import (
     Compose,
 )
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
-from clip_helper import load
+from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
@@ -167,9 +167,7 @@ def freeze_model_parameters(model):
 
 def prepare_training_components(learning_rate, weight_decay, t_max):
     # vision_encoder = load_clip()
-    vision_encoder, preprocess = load(
-        "ViT-B/32", device="cuda" if torch.cuda.is_available() else "cpu"
-    )
+    vision_encoder, preprocess = load_clip()
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay

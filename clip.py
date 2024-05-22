@@ -1,8 +1,35 @@
 from collections import OrderedDict
-from typing import Union
+from typing import Tuple, Union
 
 import torch
 from torch import nn
+from torchvision.transforms import (
+    Compose,
+    Resize,
+    CenterCrop,
+    ToTensor,
+    Normalize,
+    InterpolationMode,
+)
+
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
+
+
+def _transform(n_px):
+    return Compose(
+        [
+            Resize(n_px, interpolation=InterpolationMode.BICUBIC),
+            CenterCrop(n_px),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize(
+                (0.48145466, 0.4578275, 0.40821073),
+                (0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
 
 
 def load_clip(
@@ -18,7 +45,7 @@ def load_clip(
 
     if str(device) == "cpu":
         model.float()
-    return model
+    return model, _transform(224)
 
 
 class LayerNorm(nn.LayerNorm):
@@ -112,8 +139,17 @@ class VisionTransformer(nn.Module):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        x = x + self.positional_embedding[: x.shape[1], :].to(x.dtype)
-
+        x = torch.cat(
+            [
+                self.class_embedding.to(x.dtype)
+                + torch.zeros(
+                    x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
+                ),
+                x,
+            ],
+            dim=1,
+        )  # shape = [*, grid ** 2 + 1, width]
+        x = x + self.positional_embedding.to(x.dtype)
         x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)  # NLD -> LND
@@ -127,7 +163,7 @@ class CLIP(nn.Module):
     def __init__(
         self,
         image_resolution: int = 224,
-        vision_layers: int = 12,
+        vision_layers: Union[Tuple[int, int, int, int], int] = 12,
         vision_width: int = 768,
         vision_patch_size: int = 32,
     ):
