@@ -1,7 +1,6 @@
 from collections import OrderedDict
 from typing import Tuple, Union
 
-import numpy as np
 import torch
 from torch import nn
 
@@ -75,11 +74,9 @@ class VisionTransformer(nn.Module):
         width: int,
         layers: int,
         heads: int,
-        output_dim: int,
     ):
         super().__init__()
         self.input_resolution = input_resolution
-        self.output_dim = output_dim
         self.conv1 = nn.Conv2d(
             in_channels=3,
             out_channels=width,
@@ -96,9 +93,6 @@ class VisionTransformer(nn.Module):
         self.ln_pre = LayerNorm(width)
 
         self.transformer = Transformer(width, layers, heads)
-
-        self.ln_post = LayerNorm(width)
-        self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
     def forward(self, x: torch.Tensor):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -121,33 +115,19 @@ class VisionTransformer(nn.Module):
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
-        # x = self.ln_post(x[:, 0, :])
-
-        # if self.proj is not None:
-        #     x = x @ self.proj
-
         return x
 
 
 class CLIP(nn.Module):
     def __init__(
         self,
-        embed_dim: int,
         # vision
-        image_resolution: int,
-        vision_layers: Union[Tuple[int, int, int, int], int],
-        vision_width: int,
-        vision_patch_size: int,
-        # text
-        context_length: int,
-        vocab_size: int,
-        transformer_width: int,
-        transformer_heads: int,
-        transformer_layers: int,
+        image_resolution: int = 224,
+        vision_layers: Union[Tuple[int, int, int, int], int] = 12,
+        vision_width: int = 768,
+        vision_patch_size: int = 32,
     ):
         super().__init__()
-
-        self.context_length = context_length
 
         vision_heads = vision_width // 64
         self.visual = VisionTransformer(
@@ -156,45 +136,7 @@ class CLIP(nn.Module):
             width=vision_width,
             layers=vision_layers,
             heads=vision_heads,
-            output_dim=embed_dim,
         )
-
-        self.transformer = Transformer(
-            width=transformer_width,
-            layers=transformer_layers,
-            heads=transformer_heads,
-            attn_mask=self.build_attention_mask(),
-        )
-
-        self.vocab_size = vocab_size
-        self.token_embedding = nn.Embedding(vocab_size, transformer_width)
-        self.positional_embedding = nn.Parameter(
-            torch.empty(self.context_length, transformer_width)
-        )
-        self.ln_final = LayerNorm(transformer_width)
-
-        self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
-        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-
-        self.initialize_parameters()
-
-    def initialize_parameters(self):
-        nn.init.normal_(self.token_embedding.weight, std=0.02)
-        nn.init.normal_(self.positional_embedding, std=0.01)
-
-        proj_std = (self.transformer.width**-0.5) * (
-            (2 * self.transformer.layers) ** -0.5
-        )
-        attn_std = self.transformer.width**-0.5
-        fc_std = (2 * self.transformer.width) ** -0.5
-        for block in self.transformer.resblocks:
-            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
-            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
-            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
-            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
-
-        if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.transformer.width**-0.5)
 
     def build_attention_mask(self):
         # lazily create causal attention mask, with full attention between the vision tokens
@@ -210,37 +152,6 @@ class CLIP(nn.Module):
 
     def encode_image(self, image):
         return self.visual(image.type(self.dtype))
-
-    def encode_text(self, text):
-        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
-
-        x = x + self.positional_embedding.type(self.dtype)
-        x = x.permute(1, 0, 2)  # NLD -> LND
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.ln_final(x).type(self.dtype)
-
-        # x.shape = [batch_size, n_ctx, transformer.width]
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
-
-        return x
-
-    def forward(self, image, text):
-        image_features = self.encode_image(image)
-        text_features = self.encode_text(text)
-
-        # normalized features
-        image_features = image_features / image_features.norm(dim=1, keepdim=True)
-        text_features = text_features / text_features.norm(dim=1, keepdim=True)
-
-        # cosine similarity as logits
-        logit_scale = self.logit_scale.exp()
-        logits_per_image = logit_scale * image_features @ text_features.t()
-        logits_per_text = logits_per_image.t()
-
-        # shape = [global_batch_size, global_batch_size]
-        return logits_per_image, logits_per_text
 
 
 def convert_weights(model: nn.Module):
@@ -328,12 +239,6 @@ def build_model(state_dict: dict):
         image_resolution,
         vision_layers,
         vision_width,
-        vision_patch_size,
-        context_length,
-        vocab_size,
-        transformer_width,
-        transformer_heads,
-        transformer_layers,
     )
 
     for key in ["input_resolution", "context_length", "vocab_size"]:
