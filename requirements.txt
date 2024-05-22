@@ -4,3 +4,4 @@ tiktoken
 matplotlib
 transformers
 pytz
+pillow

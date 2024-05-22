@@ -13,14 +13,6 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2Tokenizer
 from PIL import Image
-from torchvision.transforms import (
-    Resize,
-    CenterCrop,
-    ToTensor,
-    Normalize,
-    InterpolationMode,
-    Compose,
-)
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
@@ -45,7 +37,6 @@ def save_connector_weights(connector, folder, iteration):
 
 
 def setup_logger():
-    # timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     pacific_time = pytz.timezone("US/Pacific")
     timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"training_log_{timestamp}.log"
@@ -84,25 +75,6 @@ class LoggerWriter:
             self.buffer = ""
 
 
-def convert_image_to_rgb(image):
-    return image.convert("RGB")
-
-
-def get_transform(n_px):
-    return Compose(
-        [
-            Resize(n_px, interpolation=InterpolationMode.BICUBIC),
-            CenterCrop(n_px),
-            convert_image_to_rgb,
-            ToTensor(),
-            Normalize(
-                (0.48145466, 0.4578275, 0.40821073),
-                (0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
-    )
-
-
 class COCODataset(Dataset):
     def __init__(self, root_dir, ann_file, transform=None):
         self.root_dir = root_dir
@@ -130,26 +102,6 @@ class COCODataset(Dataset):
         return image, caption
 
 
-def show_images(batch_images):
-    n_examples = batch_images.shape[0]
-    fig, axes = plt.subplots(nrows=1, ncols=n_examples, figsize=(20, 5))
-    for i in range(n_examples):
-        image_tensor = batch_images[i].permute(1, 2, 0)
-        image_array = image_tensor.cpu().numpy()
-        ax = axes[i]
-        ax.imshow(image_array)
-        ax.set_title(f"Image {i + 1}")
-        ax.axis("off")
-    plt.show()
-
-
-def show_image(image_tensor):
-    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
-    plt.imshow(image)
-    plt.axis("off")
-    plt.show()
-
-
 def load_model_and_tokenizer():
     config = GPTConfig()
     model = GPT(config)
@@ -166,7 +118,6 @@ def freeze_model_parameters(model):
 
 
 def prepare_training_components(learning_rate, weight_decay, t_max):
-    # vision_encoder = load_clip()
     vision_encoder, preprocess = load_clip()
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(
@@ -240,7 +191,6 @@ def train_model(
     vision_encoder.eval()
     connector.train()
 
-    # Get the current time in Pacific Time and create a timestamped folder
     pacific_time = pytz.timezone("US/Pacific")
     timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
     output_folder = f"training_results_{timestamp}"
@@ -258,7 +208,6 @@ def train_model(
 
             images = images.to(device)
 
-            # Ensure image features are on the correct device and have the correct dtype
             image_features = vision_encoder.encode_image(images)
             image_features = image_features.to(device).to(
                 next(connector.parameters()).dtype
@@ -355,17 +304,14 @@ if __name__ == "__main__":
     )
     freeze_model_parameters(vision_encoder)
 
-    # transform = get_transform(224)
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
     coco_dataloader = DataLoader(
         coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
-    # T_MAX = len(coco_dataloader) * EPOCHS
     model, tokenizer = load_model_and_tokenizer()
     freeze_model_parameters(model)
 
-    # Redirect print statements to the logger
     logger, log_filename = setup_logger()
     sys.stdout = LoggerWriter(logger, logging.INFO)
     sys.stderr = LoggerWriter(logger, logging.ERROR)
