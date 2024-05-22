@@ -3,15 +3,13 @@ import torch
 from PIL import Image
 import matplotlib.pyplot as plt
 from transformers import GPT2Tokenizer
-from clip_helper import load
+from clip_model_clean import load_clip
 from vision_language_connector import VisionLanguageConnector
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 
 
 def load_models_and_tokenizer(gpt_model_path, connector_weights_path):
-    vision_encoder, preprocess = load(
-        "ViT-B/32", device="cuda" if torch.cuda.is_available() else "cpu"
-    )
+    vision_encoder, preprocess = load_clip()
 
     config = GPTConfig()
     model = GPT(config)
@@ -89,8 +87,8 @@ def save_image_and_caption_to_png(folder, image_tensor, caption, image_filename)
 
 
 if __name__ == "__main__":
-    image_folder = "screenshots"
-    output_folder = "screenshots_7000_temp08"
+    image_folder = "../coco/val2017"
+    output_folder = "valfolder"
     gpt_model_path = "gpt2.bin"
     connector_weights_path = "connector_weights_7000.pt"
 
