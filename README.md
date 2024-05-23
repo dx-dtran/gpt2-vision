@@ -10,6 +10,10 @@ CLIP and GPT-2 are initialized with OpenAI's pre-trained model weights. The mult
 
 ## Samples
 
+| ![Image 1](assets/desert.png) | ![Image 2](assets/computer.png) | ![Image 3](assets/ski.png) | ![Image 4](assets/pond.png) |
+|-------------------------------|--------------------------------|----------------------------|-----------------------------|
+| ![Image 5](assets/food.png)   | ![Image 6](assets/stadium.png) | ![Image 7](assets/zoo.png) | ![Image 8](assets/mall.png) |
+
 ## Overview
 
 ### Language models
