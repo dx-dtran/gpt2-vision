@@ -2,9 +2,15 @@
 
 Learn how to build a vision-language model 
 
-GPT-2 Vision is a language model that has been augmented with CLIP to understand images. Given an image, it is able to generate text describing that image. It was written and trained from scratch in under 1000 lines of pure PyTorch
+GPT-2 Vision is a language model that has been augmented with CLIP to understand images. Given an image, it is able to generate text describing that image. The model is written from scratch in under 1000 lines of pure PyTorch
 
-## Background
+The model works by feeding an image into CLIP, which generates visual embeddings that represent the meaning of the image in a language space. A multi-layer perceptron aligns these visual embeddings with GPT-2's specific language embedding space. GPT-2 uses these refined embeddings to produce a text description of the image
+
+CLIP and GPT-2 are initialized with OpenAI's pre-trained model weights. The multi-layer perceptron is trained from randomly initialized parameters using image-text pairs from the [COCO dataset](https://cocodataset.org/#home)
+
+## Samples
+
+## Overview
 
 ### Language models
 
@@ -14,32 +20,40 @@ For example:
 
 A cat sat on a red ___.
 
-A language model will likely predict "mat" instead of "lava" because the training data likely contains many examples of cats sitting on mats but few of cats sitting on lava
+A language model will likely predict "mat" instead of "lava" because the data it was trained on likely contains many examples of cats sitting on mats but few of cats sitting on lava
 
-### Embeddings
+###  Word embeddings
 
-Language models like GPT-2 convert the prompt into word embeddings, which are points in a high-dimensional space where similar words are near one another. Regions in this space represent semantic meaning.
+To make these predictions, language models like GPT-2 first convert the prompt into word embeddings. These embeddings can be thought of as points in a high-dimensional space where similar words are near one another
 
-To predict the next word, the model could naively try to find an embedding closest to all the prompt word embeddings. However, this approach could fail for words with multiple meanings like "bat." Would the embedding space near "bat" represent the animal or the sports equipment?
+Regions in this space represent semantic meaning -- word embeddings for animals might reside in a particular space, whereas embeddings for sporting equipment might reside in another
 
-Instead, language models use the full context of the prompt to refine the embeddings, transforming them to capture the complete meaning of the text. The next word is then predicted from a region in the space close to this context-aware representation
+### Predicting the next word using embeddings
 
-Consider these sentences:
+To predict the next word, the model could naively find an embedding closest to all the prompt word embeddings. For example, given the sentence "The sun rises every ___," it might easily select "morning" because "sun rises" is unambiguously associated with "morning."
+
+However, this approach could fail for words with multiple meanings like "bat." 
+
+Consider the following sentences:
 
 1. The bat flew out of the ___.
 2. The player swung the bat at the ___.
+ 
+Would the embedding space near "bat" represent the animal or sports equipment?
 
-In the first sentence, a language model might focus on "flew out," adjusting the embeddings to create a representation of "bat" as a flying animal. This refined embedding might be close to "cave" in the semantic space, so the model may predict "cave."
+### Context-aware predictions
+
+To solve this, language models use the full context of the prompt to refine the embeddings, transforming them in a way that captures the complete meaning of the text. The next word is then sampled from a region in the space close to this context-aware representation
+
+In the first sentence, a language model might focus on "flew out," adjusting the embeddings to create a representation meaning "bat" as a flying animal. This refined embedding might be close to "cave" in the semantic space, so the model may predict "cave."
 
 In the second sentence, a model might focus on "player swung," adjusting the embeddings to represent "bat" as sports equipment, leading the model to predict "baseball."
 
-**Language models use the full context of a piece of text to transform word embeddings, creating representations that capture the complete meaning of a sentence, resulting in accurate next-word predictions.**
+In sum, **language models transform word embeddings in a way that captures the full meaning of the text, making it easier to accurately find the next word.**
 
-*A GPT-2 language model converting a sequence of text into word embeddings, using these embeddings together to predict the next word*
+*A GPT-2 language model converting a sequence of text into word embeddings, then using these embeddings together to predict the next word*
 
 ### Vision language models
-
-## Samples
 
 ## Install
 
