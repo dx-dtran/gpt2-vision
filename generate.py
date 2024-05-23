@@ -65,16 +65,15 @@ def process_images_and_generate_text(
             )
 
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.8
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.5
         )
 
         save_image_and_caption_to_png(
-            output_folder, image_tensor[0], generated_text, image_filename
+            output_folder, image, generated_text, image_filename
         )
 
 
-def save_image_and_caption_to_png(folder, image_tensor, caption, image_filename):
-    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
+def save_image_and_caption_to_png(folder, image, caption, image_filename):
     plt.figure(figsize=(8, 8))
     plt.imshow(image)
     plt.axis("off")
@@ -90,6 +89,8 @@ if __name__ == "__main__":
     image_folder = "../coco/val2017"
     output_folder = "valfolder"
     gpt_model_path = "gpt2.bin"
+
+    # use connector weights 7000 and temperature 0.8
     connector_weights_path = "connector_weights_7000.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
