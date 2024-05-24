@@ -59,13 +59,17 @@ In the second sentence, a model might focus on "player swung," adjusting the emb
 
 In sum, **language models transform word embeddings in a way that captures the full meaning of the text, making it easier to accurately find the next word.**
 
-![image](assets/gpt-architecture.png)
+<div align="center">
+ <img src="assets/gpt-architecture.png" width="500" />
+</div>
 
 *A GPT-2 language model converting a sequence of text into word embeddings, then using these embeddings together to predict the next word*
 
 ### Vision language models
 
-![image](assets/gpt-clip-architecture.png)
+<div align="center">
+ <img src="assets/gpt-clip-architecture.png" width="800" />
+</div>
 
 ## Install
 
