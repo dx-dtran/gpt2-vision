@@ -16,9 +16,9 @@ The code is designed to be educational and is written from scratch in just 5 fil
 
 ## Overview
 
-GPT-2 Vision works by feeding an image into CLIP, which generates visual embeddings that represent the meaning of the image in a language space. A multi-layer perceptron aligns these visual embeddings with GPT-2's specific language embedding space. GPT-2 uses these refined embeddings to produce a text description of the image
+GPT-2 Vision works by feeding an image into CLIP, which generates visual embeddings that represent the meaning of the image in a language space. A multi-layer perceptron aligns these visual embeddings with GPT-2's specific language embedding space. GPT-2 uses these refined vision-language embeddings to produce a text description of the image
 
-CLIP and GPT-2 are initialized with OpenAI's pre-trained model weights. The multi-layer perceptron is trained from randomly initialized parameters using image-text pairs from the [COCO dataset](https://cocodataset.org/#home)
+CLIP and GPT-2 are initialized with OpenAI's pre-trained model weights. The multi-layer perceptron is trained from randomly initialized weights using image-text pairs from the [COCO dataset](https://cocodataset.org/#home)
 
 ## Background
 
@@ -36,7 +36,7 @@ A language model will likely predict "mat" instead of "lava" because the data it
  <img src="assets/gpt-architecture.png" width="500" />
 </div>
 
-*A GPT-2 language model converting a sequence of text into word embeddings, then using these embeddings together to predict the next word*
+*A GPT-2 language model converts a sequence of text into word embeddings, then uses these embeddings together to predict the next word*
 
 ###  Text embeddings
 
@@ -46,7 +46,7 @@ Regions in this space represent semantic meaning -- word embeddings for animals 
 
 ### Predicting the next word using embeddings
 
-To predict the next word, the model might naively find an embedding closest to the embeddings of all the words in the prompt. For example, given the sentence "The sun rises every ___," it might easily select "morning" because "sun" and "rises" are unambiguously associated with "morning" and would likely reside in a similar space
+To predict the next word, a model could naively find an embedding closest to the embeddings of all the words in the prompt. For example, given the sentence "The sun rises every ___," the model might easily select "morning" because "sun" and "rises" are unambiguously associated with "morning" and would likely reside in a similar space
 
 However, this approach could fail for words with multiple meanings like "bat" 
 
@@ -55,7 +55,7 @@ Consider the following sentences:
 1. The bat flew out of the ___.
 2. The player swung the bat at the ___.
  
-Would the embedding space near "bat" represent the animal or sports equipment?
+Would the embedding space near "bat" represent the animal or baseball equipment?
 
 ### Context-aware predictions
 
@@ -65,29 +65,27 @@ In the first sentence, a language model might focus on "flew out," adjusting the
 
 In the second sentence, a model might focus on "player swung," adjusting the embeddings to represent "bat" as sports equipment, leading the model to predict "baseball"
 
-In sum, **language models transform word embeddings in a way that captures the full meaning of the text, making it easier to accurately find the next word.**
+In sum, **language models transform word embeddings in a way that captures the full meaning of the text, making it easier to accurately find the next word**
 
-### CLIP
+### Visual embeddings with CLIP
 
-OpenAI CLIP is a model that finds similarities between images and text
+Just as language embeddings represent text, visual embeddings represent images. OpenAI's CLIP is a model that builds visual embeddings by finding relationships between images and text
 
-CLIP consists of a vision encoder and a language encoder. The vision encoder generates visual embeddings from images, while the language encoder produces text embeddings, both in a shared high-dimensional semantic space
+CLIP consists of a vision encoder and a language encoder. The vision encoder produces visual embeddings from images, while the language encoder produces text embeddings, both in a shared high-dimensional semantic space
 
-CLIP is trained to align these embeddings, assigning high similarity scores to matching image-text pairs and low scores to non-matching pairs. Once trained, CLIP ensures that the embedding of an image, like a cat, is close to text embeddings of related phrases in the semantic space
-
-For example, flying bats are near animals, and baseball bats are near sporting equipment
+Once trained, CLIP ensures that the embedding of an image, like a cat, is close to text embeddings of related phrases in the semantic space. For example, a properly trained CLIP model would place image embeddings of flying bats near both visual and language representations of animals, and embeddings of baseball bats near sporting equipment
 
 ### Vision-Language Models
 
 A vision-language model generates text from images or text inputs
 
-GPT-2, a pure-text language model, operates in its own text embedding space. To convert GPT-2 into a vision-language model, we need to map CLIP visual embeddings into GPT-2's language embedding space
+GPT-2, a pure-text language model, operates in its own unique text embedding space. To convert GPT-2 into a vision-language model, we use a multi-layer perceptron (MLP) to map CLIP visual embeddings into GPT-2's language embedding space
 
-This is achieved using a multi-layer perceptron (MLP), which transforms CLIP embeddings into the GPT-2 space. In the CLIP space, images of cats are near phrases about cats. Similarly, we want these visual embeddings to be near cat-related phrases in the GPT-2 space
+In the CLIP space, images of cats are near phrases about cats. After the MLP transformation, these visual embeddings will ideally remain near cat-related text embeddings, but now in the GPT-2 specific language space
 
-An image embedding of the animal bat will be in a certain location in the space. GPT-2 can then use this context to generate a caption about animals and caves. An image embedding of a baseball bat will be in a different location, allowing GPT-2 to write about players, fields, and stadiums
+Just as GPT-2 uses previous text embeddings to generate the next word, an aligned CLIP model uses visual embeddings as if they were text embeddings.
 
-When the CLIP visual embeddings and GPT-2 text embeddings are aligned, GPT-2 can generate text relevant to the image
+A pure-text language model uses the full context of the input text to generate relevant continuations. Similarly, a vision-language model uses CLIP visual embeddings to generate contextually appropriate descriptions. Once aligned, GPT-2 can use the full context of the image and text to generate coherent descriptions
 
 <div align="center">
  <img src="assets/gpt-clip-architecture.png" width="800" />
@@ -97,11 +95,11 @@ When the CLIP visual embeddings and GPT-2 text embeddings are aligned, GPT-2 can
 
 ## Samples
 
-| ![Image 1](assets/desert.png) | ![Image 2](assets/computer.png) |
-|-------------------------------|---------------------------------|
-| ![Image 3](assets/pond.png)   | ![Image 4](assets/food.png)     |
-| ![Image 5](assets/zoo.png)    | ![Image 6](assets/mall.png)     |
-| ![Image 7](assets/car.png)    | ![Image 8](assets/stadium.png)  |
+| ![Image 1](assets/desert.png)   | ![Image 2](assets/computer.png)   |
+|---------------------------------|-----------------------------------|
+| ![Image 3](assets/pond.png)     | ![Image 4](assets/food.png)       |
+| ![Image 5](assets/zoo.png)      | ![Image 6](assets/mall.png)       |
+| ![Image 7](assets/car.png)      | ![Image 8](assets/stadium.png)    |
 
 *Captions generated by GPT-2 Vision on unseen images*
 
