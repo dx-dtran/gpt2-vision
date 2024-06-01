@@ -83,9 +83,9 @@ A vision-language model consumes both image and text inputs and generates text
 
 [GPT-2](gpt.py), a pure-text language model, can be converted into a vision-language model by enabling it to accept visual inputs from [CLIP](clip.py)
 
-GPT-2 cannot natively generate text using CLIP visual embeddings because GPT-2 and CLIP operate in their own unique embedding spaces. However, by moving CLIP's visual representations, such as images of bats, close to GPT-2's text representations of bats, GPT-2 can generate relevant text about the bat images as if it were using its own standard bat text embeddings
+GPT-2 cannot natively generate text using CLIP visual embeddings because GPT-2 and CLIP operate in their own unique embedding spaces. However, by moving *CLIP's visual* representations, such as images of bats, close to *GPT-2's text* representations of bats, GPT-2 can [generate](generate.py) relevant text about the bat images as if it were using its own standard bat text embeddings as context
 
-Transforming the CLIP embeddings over to the GPT-2 text space is achieved through a multi-layer perceptron (MLP) called a [vision-language connector](vision_language_connector.py). The MLP acts as a mathematical function that shifts points from one location (the CLIP space) to another (the GPT-2 space)
+Transforming the CLIP embeddings over to the GPT-2 text space is achieved by [training](train.py) a multi-layer perceptron (MLP) called a [vision-language connector](vision_language_connector.py). The trained MLP acts as a mathematical function that shifts points from one location (the CLIP space) to another (the GPT-2 space)
 
 **When these transformed visual embeddings are input into GPT-2, it can reason about the full meaning of the image to generate relevant text, converting it into a vision-language model**
 
