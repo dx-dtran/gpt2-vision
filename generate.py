@@ -2,6 +2,7 @@ import os
 import torch
 from PIL import Image
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 from transformers import GPT2Tokenizer
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
@@ -65,7 +66,7 @@ def process_images_and_generate_text(
             )
 
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.5
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.8
         )
 
         save_image_and_caption_to_png(
@@ -74,27 +75,32 @@ def process_images_and_generate_text(
 
 
 def save_image_and_caption_to_png(folder, image, caption, image_filename):
-    plt.figure(figsize=(8, 8))
-    plt.imshow(image)
-    plt.axis("off")
-    plt.title(caption, wrap=True)
-    png_filename = os.path.join(
-        folder, f"{os.path.splitext(image_filename)[0]}_caption.png"
-    )
-    plt.savefig(png_filename)
+    fig = plt.figure(figsize=(8, 10))
+    gs = GridSpec(2, 1, height_ratios=[10, 1])
+
+    ax_image = fig.add_subplot(gs[0])
+    ax_image.imshow(image)
+    ax_image.axis("off")
+
+    ax_caption = fig.add_subplot(gs[1])
+    ax_caption.text(0.5, 0.5, caption, ha="center", va="center", wrap=True, fontsize=12)
+    ax_caption.axis("off")
+
+    png_filename = os.path.join(folder, f"{os.path.splitext(image_filename)[0]}.png")
+    plt.savefig(png_filename, bbox_inches="tight", pad_inches=0.1)
+
     plt.close()
 
 
 if __name__ == "__main__":
-    image_folder = "../coco/val2017"
-    output_folder = "valfolder"
-    gpt_model_path = "gpt2.bin"
+    image_folder = "input_images"
+    output_folder = "outputs"
 
-    # use connector weights 7000 and temperature 0.8
-    connector_weights_path = "connector_weights_7000.pt"
+    gpt_weights_path = "gpt2.pt"
+    connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
-        gpt_model_path, connector_weights_path
+        gpt_weights_path, connector_weights_path
     )
 
     process_images_and_generate_text(

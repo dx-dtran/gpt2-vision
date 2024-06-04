@@ -267,7 +267,13 @@ def generate_text(
     )
     print("---------------")
     generated_text = [tokenizer.decode([token]) for token in tokens]
-    returned_text = "".join([token for token in generated_text if token != "\n"])
+    returned_text = "".join(
+        [
+            " " if token == "\n" or token == "<|endoftext|>" else token
+            for token in generated_text
+            if token != ""
+        ]
+    )
     return returned_text
 
 

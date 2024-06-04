@@ -36,7 +36,7 @@ def load_clip(
     device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
 ):
 
-    with open("clip_simplified.pt", "rb") as opened_file:
+    with open("clip.pt", "rb") as opened_file:
         state_dict = torch.load(opened_file, map_location="cpu")
 
     model = CLIP()
