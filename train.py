@@ -105,7 +105,7 @@ class COCODataset(Dataset):
 def load_model_and_tokenizer():
     config = GPTConfig()
     model = GPT(config)
-    state_dict = torch.load("gpt2.bin", map_location="cpu")
+    state_dict = torch.load("gpt2.pt", map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
     model.load_state_dict(state_dict_transposed, strict=False)
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
