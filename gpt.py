@@ -253,7 +253,11 @@ class GPT(nn.Module):
             logits = logits.view(-1, vocab_size)
             targets = targets.view(-1)
             loss = F.cross_entropy(logits, targets, ignore_index=-100)
-            return logits, loss
+
+            valid_tokens = (targets != -100).sum().item()
+            normalized_loss = loss / valid_tokens
+
+            return logits, normalized_loss
 
         return logits, None
 
