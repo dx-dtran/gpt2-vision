@@ -129,6 +129,23 @@ class GPT(nn.Module):
         mask = torch.tril(torch.ones((length, length), dtype=torch.float32))
         return mask.view(1, 1, length, length).to(self.wte.weight.device).bool()
 
+    def _create_vision_language_mask(self, seq_length: int, num_visual_tokens: int):
+        mask = torch.zeros((seq_length, seq_length), dtype=torch.float32)
+
+        # Vision tokens attend to all vision tokens (bidirectional)
+        mask[:num_visual_tokens, :num_visual_tokens] = 1
+
+        mask[num_visual_tokens:, :num_visual_tokens] = 1
+        text_length = seq_length - num_visual_tokens
+        causal_text_mask = torch.tril(
+            torch.ones(text_length, text_length, dtype=torch.float32)
+        )
+        mask[num_visual_tokens:, num_visual_tokens:] = causal_text_mask
+
+        mask = mask.view(1, 1, seq_length, seq_length)
+
+        return mask.to(self.wte.weight.device).bool()
+
     def _sample_next_token(self, x, temperature):
         logits = x[:, -1:] @ self.wte.weight.T
         y = logits[:, -1, :]
@@ -146,14 +163,19 @@ class GPT(nn.Module):
         text_embeds = text_embeds + pos_emb
 
         if visual_embeds is not None:
+
+            # 0th index is the number of visual embeddings because during inference, batchsize is set to 1
+            num_visual_tokens = visual_embeds.size(0)
             combined_embeds = torch.cat(
                 [visual_embeds.unsqueeze(0), text_embeds], dim=1
             )
+
+            seq_len = num_visual_tokens + text_len
+            mask = self._create_vision_language_mask(seq_len, num_visual_tokens)
         else:
             combined_embeds = text_embeds
-
-        _, t, _ = combined_embeds.size()
-        mask = self._create_causal_mask(t)
+            seq_len = text_len
+            mask = self._create_causal_mask(seq_len)
 
         combined_embeds, cache = self._forward_transformer_blocks(
             combined_embeds, mask=mask, build_cache=True
@@ -167,7 +189,7 @@ class GPT(nn.Module):
             text_embeds = self.wte(y)
 
             pos_emb = self.wpe(
-                torch.tensor([t], dtype=torch.long, device=y.device)
+                torch.tensor([seq_len], dtype=torch.long, device=y.device)
             ).unsqueeze(0)
             text_embeds = text_embeds + pos_emb
 
@@ -180,7 +202,7 @@ class GPT(nn.Module):
             combined_embeds = (
                 combined_embeds.detach()
             )  # Detach to avoid keeping old graph references
-            t += 1
+            seq_len += 1
 
         del cache  # Clear the cache explicitly
         torch.cuda.empty_cache()  # Free up unused memory
@@ -202,6 +224,15 @@ class GPT(nn.Module):
             combined_embeds = text_embeds
 
         batch_size, seq_length, _ = combined_embeds.shape
+
+        if visual_embeds is not None:
+            num_visual_tokens = visual_embeds.size(1)
+            causal_mask = self._create_vision_language_mask(
+                seq_length, num_visual_tokens
+            )
+        else:
+            causal_mask = self._create_causal_mask(seq_length)
+
         assert (
             seq_length <= self.config.block_size
         ), f"Cannot forward sequence of length {seq_length}, block size is only {self.config.block_size}"
@@ -209,7 +240,6 @@ class GPT(nn.Module):
         if padding_mask is not None:
             padding_mask = padding_mask.unsqueeze(1).unsqueeze(2)
 
-        causal_mask = self._create_causal_mask(seq_length)
         if padding_mask is not None:
             combined_mask = causal_mask & padding_mask
         else:
