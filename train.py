@@ -124,7 +124,7 @@ def prepare_training_components(learning_rate, weight_decay):
     )
 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.1, patience=2, verbose=True, min_lr=1e-7
+        optimizer, mode="min", factor=0.5, patience=2, verbose=True, min_lr=1e-7
     )
     return vision_encoder, preprocess, connector, optimizer, scheduler
 
@@ -311,7 +311,7 @@ def validate_model(
     validation_loader,
     batch_size,
     device,
-    max_batches=30,
+    max_batches=20,
 ):
     model.eval()
     connector.eval()
