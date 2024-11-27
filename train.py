@@ -310,7 +310,11 @@ def validate_model(
     total_val_loss = 0
 
     with torch.no_grad():
-        for images, captions in validation_loader:
+        for batch_num, (images, captions) in enumerate(validation_loader):
+
+            if batch_num > 20:
+                break
+
             images = images.to(device)
 
             image_features = vision_encoder.encode_image(images)
@@ -342,20 +346,21 @@ def validate_model(
             )
 
             total_val_loss += val_loss.item()
+            logger.info(f"Validation Batch Loss: {val_loss.item():.4f}")
+
+            del (
+                images,
+                image_features,
+                vision_embed,
+                x_val_padded,
+                y_val,
+                padding_mask,
+            )
+            torch.cuda.empty_cache()
+            gc.collect()
 
     average_val_loss = total_val_loss / len(validation_loader)
-    logger.info(f"Validation Loss: {average_val_loss:.4f}")
-
-    del (
-        images,
-        image_features,
-        vision_embed,
-        x_val_padded,
-        y_val,
-        padding_mask,
-    )
-    torch.cuda.empty_cache()
-    gc.collect()
+    logger.info(f"Validation Loss Estimate: {average_val_loss:.4f}")
 
     return average_val_loss
 
