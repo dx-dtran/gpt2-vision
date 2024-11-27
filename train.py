@@ -260,7 +260,7 @@ def train_model(
                 f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {optimizer.param_groups[0]['lr']:.9f} - Iter: {iteration_time:.4f} sec"
             )
 
-            if (i + 1) % 100 == 0 or (i + 1) == 1:
+            if (i + 1) % 300 == 0:
                 generated_text = generate_text(
                     model, tokenizer, vision_embeds=vision_embed[0]
                 )
