@@ -175,6 +175,7 @@ def train_model(
     vision_encoder,
     tokenizer,
     data_loader,
+    val_data_loader,
     optimizer,
     scheduler,
     epochs,
@@ -266,6 +267,16 @@ def train_model(
                     output_folder, images[0], generated_text, i + 1
                 )
 
+                validate_model(
+                    model,
+                    connector,
+                    vision_encoder,
+                    tokenizer,
+                    val_data_loader,
+                    batch_size,
+                    device,
+                )
+
             if (i + 1) % 1000 == 0:
                 save_connector_weights(connector, weights_output_folder, i + 1)
 
@@ -287,6 +298,66 @@ def train_model(
         gc.collect()
 
     logger.info("Training complete.")
+
+
+def validate_model(
+    model, connector, vision_encoder, tokenizer, validation_loader, batch_size, device
+):
+    model.eval()
+    connector.eval()
+    vision_encoder.eval()
+
+    total_val_loss = 0
+
+    with torch.no_grad():
+        for images, captions in validation_loader:
+            images = images.to(device)
+
+            image_features = vision_encoder.encode_image(images)
+            image_features = image_features.to(device).to(
+                next(connector.parameters()).dtype
+            )
+            vision_embed = connector(image_features)
+            vision_embed = vision_embed.to(device).to(
+                next(connector.parameters()).dtype
+            )
+            num_patches = vision_embed.size(1)
+
+            if len(captions) != batch_size:
+                del images, image_features, vision_embed
+                torch.cuda.empty_cache()
+                gc.collect()
+                continue
+
+            x_val_padded, y_val, padding_mask = tokenize_and_prepare_batches(
+                captions, tokenizer, batch_size, num_patches
+            )
+
+            x_val_padded = x_val_padded.to(device)
+            y_val = y_val.to(device)
+            padding_mask = padding_mask.to(device)
+
+            logits, val_loss = model(
+                x_val_padded, vision_embed, targets=y_val, padding_mask=padding_mask
+            )
+
+            total_val_loss += val_loss.item()
+
+    average_val_loss = total_val_loss / len(validation_loader)
+    logger.info(f"Validation Loss: {average_val_loss:.4f}")
+
+    del (
+        images,
+        image_features,
+        vision_embed,
+        x_val_padded,
+        y_val,
+        padding_mask,
+    )
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    return average_val_loss
 
 
 if __name__ == "__main__":
@@ -322,6 +393,7 @@ if __name__ == "__main__":
         vision_encoder,
         tokenizer,
         coco_dataloader,
+        val_dataloader,
         optimizer,
         scheduler,
         EPOCHS,
