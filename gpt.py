@@ -114,13 +114,14 @@ class GPT(nn.Module):
         x = self.drop(x)
         kv_cache = []
 
-        for i, block in enumerate(self.h):
-            if cache is not None and i < len(cache):
-                x, new_cache = block(x, mask=mask, cache=cache[i])
-            else:
-                x, new_cache = block(x, mask=mask)
-            if build_cache:
-                kv_cache.append(new_cache)
+        if cache is not None:
+            for i in range(len(cache)):
+                x, cache[i] = self.h[i](x, mask=None, cache=cache[i])
+        else:
+            for block in self.h:
+                x, curr_cache = block(x, mask=mask)
+                if build_cache:
+                    kv_cache.append(curr_cache)
 
         x = self.ln_f(x)
         return x, kv_cache if build_cache else cache
