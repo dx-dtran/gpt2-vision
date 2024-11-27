@@ -9,7 +9,6 @@ import pytz
 import torch
 import torch.optim as optim
 from datetime import datetime
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import GPT2Tokenizer
 from PIL import Image
@@ -117,13 +116,16 @@ def freeze_model_parameters(model):
         param.requires_grad = False
 
 
-def prepare_training_components(learning_rate, weight_decay, t_max):
+def prepare_training_components(learning_rate, weight_decay):
     vision_encoder, preprocess = load_clip()
     connector = VisionLanguageConnector()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
-    scheduler = CosineAnnealingLR(optimizer, T_max=t_max)
+
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.1, patience=2, verbose=True, min_lr=1e-7
+    )
     return vision_encoder, preprocess, connector, optimizer, scheduler
 
 
@@ -248,7 +250,6 @@ def train_model(
             if (i + 1) % gradient_accumulation_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
-                scheduler.step()
 
             epoch_loss += loss.item() * gradient_accumulation_steps
 
@@ -256,7 +257,7 @@ def train_model(
             iteration_time = end_time - start_time
 
             logger.info(
-                f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {scheduler.get_last_lr()[0]:.9f} - Iter: {iteration_time:.4f} sec"
+                f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {optimizer.param_groups[0]['lr']:.9f} - Iter: {iteration_time:.4f} sec"
             )
 
             if (i + 1) % 100 == 0 or (i + 1) == 1:
@@ -267,7 +268,7 @@ def train_model(
                     output_folder, images[0], generated_text, i + 1
                 )
 
-                validate_model(
+                val_loss = validate_model(
                     model,
                     connector,
                     vision_encoder,
@@ -276,6 +277,8 @@ def train_model(
                     batch_size,
                     device,
                 )
+
+                scheduler.step(val_loss)
 
             if (i + 1) % 1000 == 0:
                 save_connector_weights(connector, weights_output_folder, i + 1)
@@ -383,7 +386,7 @@ if __name__ == "__main__":
     coco_ann_file = "../coco/annotations/captions_train2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vision_encoder, preprocess, connector, optimizer, scheduler = (
-        prepare_training_components(LEARNING_RATE, WEIGHT_DECAY, 18000 * EPOCHS)
+        prepare_training_components(LEARNING_RATE, WEIGHT_DECAY)
     )
     freeze_model_parameters(vision_encoder)
 
