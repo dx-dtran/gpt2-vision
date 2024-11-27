@@ -10,7 +10,7 @@ import torch
 import torch.optim as optim
 from datetime import datetime
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import GPT2Tokenizer
 from PIL import Image
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
@@ -376,8 +376,15 @@ if __name__ == "__main__":
     freeze_model_parameters(vision_encoder)
 
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
+    train_size = int(0.8 * len(coco_dataset))
+    val_size = len(coco_dataset) - train_size
+    train_dataset, val_dataset = random_split(coco_dataset, [train_size, val_size])
+
     coco_dataloader = DataLoader(
-        coco_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
+    )
+    val_dataloader = DataLoader(
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=1
     )
 
     model, tokenizer = load_model_and_tokenizer()
