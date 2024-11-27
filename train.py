@@ -301,7 +301,14 @@ def train_model(
 
 
 def validate_model(
-    model, connector, vision_encoder, tokenizer, validation_loader, batch_size, device
+    model,
+    connector,
+    vision_encoder,
+    tokenizer,
+    validation_loader,
+    batch_size,
+    device,
+    max_batches=30,
 ):
     model.eval()
     connector.eval()
@@ -312,7 +319,7 @@ def validate_model(
     with torch.no_grad():
         for batch_num, (images, captions) in enumerate(validation_loader):
 
-            if batch_num > 20:
+            if batch_num > max_batches:
                 break
 
             images = images.to(device)
@@ -359,7 +366,7 @@ def validate_model(
             torch.cuda.empty_cache()
             gc.collect()
 
-    average_val_loss = total_val_loss / len(validation_loader)
+    average_val_loss = total_val_loss / max_batches
     logger.info(f"Validation Loss Estimate: {average_val_loss:.4f}")
 
     return average_val_loss
@@ -389,7 +396,7 @@ if __name__ == "__main__":
         train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=1
+        val_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
     )
 
     model, tokenizer = load_model_and_tokenizer()
