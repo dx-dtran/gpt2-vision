@@ -391,7 +391,7 @@ if __name__ == "__main__":
     freeze_model_parameters(vision_encoder)
 
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
-    train_size = int(0.8 * len(coco_dataset))
+    train_size = int(0.9 * len(coco_dataset))
     val_size = len(coco_dataset) - train_size
     train_dataset, val_dataset = random_split(coco_dataset, [train_size, val_size])
 
