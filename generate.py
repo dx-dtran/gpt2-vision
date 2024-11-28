@@ -94,10 +94,10 @@ def save_image_and_caption_to_png(folder, image, caption, image_filename):
 
 if __name__ == "__main__":
     image_folder = "input_images"
-    output_folder = "outputs"
+    output_folder = "outputs-11-27-2024-0424pm"
 
     gpt_weights_path = "gpt2.pt"
-    connector_weights_path = "vl_connector.pt"
+    connector_weights_path = "connector_weights_11000.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_weights_path, connector_weights_path
