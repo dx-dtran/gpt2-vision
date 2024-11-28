@@ -168,13 +168,12 @@ class GPT(nn.Module):
             combined_embeds = torch.cat(
                 [visual_embeds.unsqueeze(0), text_embeds], dim=1
             )
-            seq_len = num_visual_tokens + text_len
-            mask = self._create_vision_language_mask(seq_len, num_visual_tokens)
-            seq_len = text_len
+            mask = self._create_vision_language_mask(
+                num_visual_tokens + text_len, num_visual_tokens
+            )
         else:
             combined_embeds = text_embeds
-            seq_len = text_len
-            mask = self._create_causal_mask(seq_len)
+            mask = self._create_causal_mask(text_len)
 
         combined_embeds, cache = self._forward_transformer_blocks(
             combined_embeds, mask=mask, build_cache=True
@@ -184,11 +183,14 @@ class GPT(nn.Module):
         tokens = []
         for _ in range(max_new_tokens):
             y = self._sample_next_token(combined_embeds[:, -1:, :], temperature)
+
+            yield y
+
             tokens.append(y)
             text_embeds = self.wte(y)
 
             pos_emb = self.wpe(
-                torch.tensor([seq_len], dtype=torch.long, device=y.device)
+                torch.tensor([text_len], dtype=torch.long, device=y.device)
             ).unsqueeze(0)
             text_embeds = text_embeds + pos_emb
 
@@ -201,7 +203,7 @@ class GPT(nn.Module):
             combined_embeds = (
                 combined_embeds.detach()
             )  # Detach to avoid keeping old graph references
-            seq_len += 1
+            text_len += 1
 
         del cache  # Clear the cache explicitly
         torch.cuda.empty_cache()  # Free up unused memory
@@ -327,8 +329,3 @@ if __name__ == "__main__":
     prompt = "hello my name is"
     print(prompt, end="")
     generate_text(model, tokenizer, initial_text=prompt)
-
-    # Optionally, provide vision embeddings if available
-    # vision_embeds = None  # Replace with actual vision embeddings if available
-    # print("Generation with vision embeddings:")
-    # generate_text(model, tokenizer, initial_text="Once upon a time", vision_embeds=vision_embeds)
