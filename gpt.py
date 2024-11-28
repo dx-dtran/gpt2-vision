@@ -156,27 +156,24 @@ class GPT(nn.Module):
         return y
 
     def generate(self, x, visual_embeds=None, max_new_tokens=256, temperature=0.8):
-        if x.size(1) > 0:
-            text_embeds = self.wte(x)
-
-            batch_size, text_len, _ = text_embeds.size()
-            pos_ids = torch.arange(
-                0, text_len, dtype=torch.long, device=text_embeds.device
-            )
-            pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(batch_size, text_len, -1)
-            text_embeds = text_embeds + pos_emb
-        else:
-            text_embeds = None
+        text_embeds = self.wte(x)
+        batch_size, text_len, _ = text_embeds.size()
+        pos_ids = torch.arange(0, text_len, dtype=torch.long, device=text_embeds.device)
+        pos_emb = self.wpe(pos_ids).unsqueeze(0).expand(batch_size, text_len, -1)
+        text_embeds = text_embeds + pos_emb
 
         if visual_embeds is not None:
+            # 0th index is the number of visual embeddings because during inference, batchsize is set to 1
             num_visual_tokens = visual_embeds.size(0)
-            combined_embeds = visual_embeds.unsqueeze(0)
-            seq_len = num_visual_tokens
+            combined_embeds = torch.cat(
+                [visual_embeds.unsqueeze(0), text_embeds], dim=1
+            )
+            seq_len = num_visual_tokens + text_len
             mask = self._create_vision_language_mask(seq_len, num_visual_tokens)
-            seq_len = 0
+            seq_len = text_len
         else:
             combined_embeds = text_embeds
-            seq_len = text_embeds.size(1) if text_embeds is not None else 0
+            seq_len = text_len
             mask = self._create_causal_mask(seq_len)
 
         combined_embeds, cache = self._forward_transformer_blocks(
@@ -281,9 +278,7 @@ def transpose_specific_layers(state_dict):
 def generate_text(
     model: GPT, tokenizer, initial_text="", vision_embeds=None, temperature=0.8
 ):
-    if vision_embeds is not None:
-        x = torch.tensor([[]], device=model.wte.weight.device)
-    elif initial_text:
+    if initial_text:
         x = torch.tensor(
             [tokenizer.encode(initial_text)], device=model.wte.weight.device
         )

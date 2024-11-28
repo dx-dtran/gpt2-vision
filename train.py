@@ -130,13 +130,17 @@ def prepare_training_components(learning_rate, weight_decay):
 
 
 def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
+    image_end_token_id = tokenizer.bos_token_id
     end_text_token_id = tokenizer.eos_token_id
     pad_token_id = 0
 
     tokenized_captions = [
         torch.tensor(tokenizer.encode(caption)).detach() for caption in captions
     ]
-    x_train = [tokenized_captions[i].detach() for i in range(batch_size)]
+    x_train = [
+        torch.cat([torch.tensor([image_end_token_id]), tokenized_captions[i]]).detach()
+        for i in range(batch_size)
+    ]
     max_length = max([seq.size(0) for seq in x_train])
     x_train_padded = torch.full(
         (batch_size, max_length), pad_token_id, dtype=torch.long
@@ -149,7 +153,7 @@ def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
         current_sequence = tokenized_captions[i]
         shifted_sequence = torch.cat(
             [
-                current_sequence[1:],
+                current_sequence,
                 torch.tensor([end_text_token_id], dtype=torch.long).detach(),
             ]
         ).detach()
