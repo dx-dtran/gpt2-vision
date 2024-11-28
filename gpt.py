@@ -299,11 +299,17 @@ def generate_text(
         f"time: {end - start:.3f} s, tokens per second: {len(tokens) / (end - start)}"
     )
     print("---------------")
-    generated_text = [tokenizer.decode([token]) for token in tokens]
-    returned_text = "".join(
-        [" " if token == "\n" else token for token in generated_text if token != ""]
-    )
-    return returned_text
+    returned_text = []
+    for token in tokens:
+        decoded = tokenizer.decode([token])
+        if token == tokenizer.eos_token_id:
+            break
+        if decoded == "\n":
+            returned_text.append(" ")
+        elif decoded != "":
+            returned_text.append(decoded)
+
+    return "".join(returned_text)
 
 
 if __name__ == "__main__":
