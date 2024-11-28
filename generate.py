@@ -1,7 +1,9 @@
 import os
 import torch
-from PIL import Image
+import random
+import time
 import matplotlib.pyplot as plt
+from PIL import Image
 from matplotlib.gridspec import GridSpec
 from transformers import GPT2Tokenizer
 from clip import load_clip
@@ -47,7 +49,10 @@ def process_images_and_generate_text(
 
     os.makedirs(output_folder, exist_ok=True)
 
-    for i, image_filename in enumerate(os.listdir(image_folder)):
+    image_files = os.listdir(image_folder)
+    random.shuffle(image_files)
+
+    for i, image_filename in enumerate(image_files):
         if i > max_generations:
             break
 
@@ -93,8 +98,12 @@ def save_image_and_caption_to_png(folder, image, caption, image_filename):
 
 
 if __name__ == "__main__":
-    image_folder = "input_images"
-    output_folder = "outputs-11-28-2024-0739pm"
+
+    current_time = time.time()
+    current_time = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(current_time))
+
+    image_folder = "../coco/val2017"
+    output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
     connector_weights_path = "vl_connector.pt"

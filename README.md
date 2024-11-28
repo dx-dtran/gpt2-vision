@@ -121,6 +121,7 @@ Download the COCO 2017 training dataset and annotations and store them in a dire
 
 ```shell
 $ mkdir coco
+$ cd coco
 $ wget http://images.cocodataset.org/zips/train2017.zip
 $ wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip
 ```
