@@ -173,6 +173,7 @@ class GPT(nn.Module):
             combined_embeds = visual_embeds.unsqueeze(0)
             seq_len = num_visual_tokens
             mask = self._create_vision_language_mask(seq_len, num_visual_tokens)
+            seq_len = 0
         else:
             combined_embeds = text_embeds
             seq_len = text_embeds.size(1) if text_embeds is not None else 0
@@ -305,11 +306,7 @@ def generate_text(
     print("---------------")
     generated_text = [tokenizer.decode([token]) for token in tokens]
     returned_text = "".join(
-        [
-            " " if token == "\n" or token == "<|endoftext|>" else token
-            for token in generated_text
-            if token != ""
-        ]
+        [" " if token == "\n" else token for token in generated_text if token != ""]
     )
     return returned_text
 
