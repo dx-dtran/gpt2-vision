@@ -117,7 +117,15 @@ $ pip install -r requirements.txt
 
 ## Train
 
-Download the pre-trained GPT-2 and CLIP model weights from Hugging Face [here](https://huggingface.co/dxdtran/gpt2-vision/tree/main)
+Download the COCO 2017 training dataset and annotations and store them in a directory called `coco`
+
+```shell
+$ mkdir coco
+$ wget http://images.cocodataset.org/zips/train2017.zip
+$ wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+```
+
+In the project directory, download the pre-trained GPT-2 and CLIP model weights from Hugging Face [here](https://huggingface.co/dxdtran/gpt2-vision/tree/main)
 
 The training code updates a multi-layer perceptron to align visual embeddings from CLIP with text embeddings from GPT-2
 
