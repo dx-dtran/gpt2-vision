@@ -265,7 +265,7 @@ def train_model(
                     model, tokenizer, vision_embeds=vision_embed[0]
                 )
                 save_image_and_caption_to_png(
-                    output_folder, images[0], generated_text, i + 1
+                    output_folder, images[0], generated_text, f"{i + 1}_{epoch}"
                 )
 
                 val_loss = validate_model(
@@ -281,7 +281,9 @@ def train_model(
                 scheduler.step(val_loss)
 
             if (i + 1) % 1000 == 0:
-                save_connector_weights(connector, weights_output_folder, i + 1)
+                save_connector_weights(
+                    connector, weights_output_folder, f"{i + 1}_{epoch}"
+                )
 
             del (
                 images,
