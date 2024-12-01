@@ -4,6 +4,7 @@ import json
 import gc
 import logging
 import pytz
+import math
 import torch
 import torch.optim as optim
 import matplotlib.pyplot as plt
@@ -223,9 +224,13 @@ def validate_model(
 
             # Plot histograms for each token
             num_tokens = len(filtered_targets)
-            fig, axes = plt.subplots(num_tokens, 1, figsize=(10, num_tokens * 2))
-            if num_tokens == 1:
-                axes = [axes]  # Ensure axes is iterable for a single subplot
+            cols = 3
+            rows = math.ceil(num_tokens / cols)
+            fig, axes = plt.subplots(rows, cols, figsize=(15, rows * 3))
+
+            axes = (
+                axes.flatten()
+            )  # Flatten axes to easily iterate even for single-row layouts
 
             for i, (target, top_indices, top_probs) in enumerate(
                 zip(filtered_targets, top_k_indices, top_k_probs)
@@ -243,6 +248,10 @@ def validate_model(
                 )
                 ax.set_ylabel("Logit Value")
                 ax.set_xlabel("Top-k Predictions")
+
+            # Hide unused subplots
+            for j in range(i + 1, len(axes)):
+                axes[j].axis("off")
 
             plt.tight_layout()
             plt.show()
