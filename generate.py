@@ -11,17 +11,19 @@ from vision_language_connector import VisionLanguageConnector
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 
 
-def load_models_and_tokenizer(gpt_model_path, connector_weights_path):
-    vision_encoder, preprocess = load_clip()
+def load_models_and_tokenizer(gpt_model_path, connector_weights_path, device):
+    vision_encoder, preprocess = load_clip(device)
 
     config = GPTConfig()
     model = GPT(config)
     state_dict = torch.load(gpt_model_path, map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
     model.load_state_dict(state_dict_transposed, strict=False)
+    model = model.to(device)
 
     connector = VisionLanguageConnector()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
+    connector = connector.to(device)
 
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 
@@ -102,14 +104,16 @@ if __name__ == "__main__":
     current_time = time.time()
     current_time = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(current_time))
 
-    image_folder = "../coco/val2017"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    image_folder = "D:/coco/val2017"
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
     connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
-        gpt_weights_path, connector_weights_path
+        gpt_weights_path, connector_weights_path, device
     )
 
     process_images_and_generate_text(

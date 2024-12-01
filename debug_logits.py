@@ -84,12 +84,13 @@ class COCODataset(Dataset):
         return image, caption
 
 
-def load_model_and_tokenizer():
+def load_model_and_tokenizer(device):
     config = GPTConfig()
     model = GPT(config)
     state_dict = torch.load("gpt2.pt", map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
     model.load_state_dict(state_dict_transposed, strict=False)
+    model = model.to(device)
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     return model, tokenizer
 
@@ -263,17 +264,19 @@ if __name__ == "__main__":
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 1
-    coco_root_dir = "../coco/val2017"
-    coco_ann_file = "../coco/annotations/captions_val2017.json"
+    coco_root_dir = "D:/coco/val2017"
+    coco_ann_file = "D:/coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
     # connector_weights_path = "vl_connector.pt"
 
-    vision_encoder, preprocess = load_clip()
+    vision_encoder, preprocess = load_clip(device)
     connector = VisionLanguageConnector()
     # connector = VisionLanguageConnectorOld()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
+
+    connector = connector.to(device)
 
     freeze_model_parameters(vision_encoder)
 
@@ -283,10 +286,10 @@ if __name__ == "__main__":
     train_dataset, val_dataset = random_split(coco_dataset, [train_size, val_size])
 
     val_dataloader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=1
     )
 
-    model, tokenizer = load_model_and_tokenizer()
+    model, tokenizer = load_model_and_tokenizer(device)
     freeze_model_parameters(model)
 
     logger, log_filename = setup_logger()
