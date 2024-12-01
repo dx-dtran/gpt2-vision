@@ -13,6 +13,7 @@ from PIL import Image
 from gpt import GPT, GPTConfig, transpose_specific_layers
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
+from vision_language_connector_old import VisionLanguageConnectorOld
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
@@ -216,15 +217,24 @@ def validate_model(
             filtered_logits = logits[valid_mask]  # Shape: [num_valid, vocab_size]
 
             # Get the top 3 argmax indices for each row
-            top_3_probs, top_3_indices = torch.topk(filtered_logits, k=3, dim=-1)
+            top_3_probs, top_3_indices = torch.topk(filtered_logits, k=10, dim=-1)
             filtered_targets = y_val[valid_mask]
+
             for i, (target, top_indices, top_probs) in enumerate(
                 zip(filtered_targets, top_3_indices, top_3_probs)
             ):
-                logger.info(f"Row {i}:")
-                logger.info(f"  Target Index: {target.item()}")
-                logger.info(f"  Top 3 Indices: {top_indices.tolist()}")
-                logger.info(f"  Top 3 Probabilities: {top_probs.tolist()}")
+                target_text = tokenizer.decode([target.item()])
+
+                logger.info(f"Sequence token {i}:")
+                logger.info(f"  Target Index: {target.item()} -> '{target_text}'")
+                logger.info(f"  Top Predictions:")
+                for rank, (token, prob) in enumerate(
+                    zip(top_indices.tolist(), top_probs.tolist()), start=1
+                ):
+                    token_text = tokenizer.decode([token])
+                    logger.info(
+                        f"    {rank}. Index: {token} -> '{token_text}', Probability: {prob:.4f}"
+                    )
 
             total_val_loss += val_loss.item()
             logger.info(f"Validation Batch Loss: {val_loss.item():.4f}")
@@ -253,14 +263,16 @@ if __name__ == "__main__":
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 1
-    coco_root_dir = "../coco/train2017"
-    coco_ann_file = "../coco/annotations/captions_train2017.json"
+    coco_root_dir = "../coco/val2017"
+    coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
+    # connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess = load_clip()
     connector = VisionLanguageConnector()
+    # connector = VisionLanguageConnectorOld()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
 
     freeze_model_parameters(vision_encoder)
