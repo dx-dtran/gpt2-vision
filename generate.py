@@ -73,7 +73,7 @@ def process_images_and_generate_text(
             )
 
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.8
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.2
         )
 
         save_image_and_caption_to_png(
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
-    connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
+    connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_weights_path, connector_weights_path, device
