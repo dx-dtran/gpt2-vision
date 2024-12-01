@@ -207,9 +207,7 @@ def validate_model(
                 x_val_padded, vision_embed, targets=y_val, padding_mask=padding_mask
             )
 
-            logits = logits.view(
-                -1, logits.size(-1)
-            )
+            logits = logits.view(-1, logits.size(-1))
             y_val = y_val.view(-1)
 
             valid_mask = y_val != -100
@@ -218,24 +216,36 @@ def validate_model(
 
             num_logits_to_print = 10
 
-            top_k_probs, top_k_indices = torch.topk(filtered_logits, k=num_logits_to_print, dim=-1)
+            top_k_probs, top_k_indices = torch.topk(
+                filtered_logits, k=num_logits_to_print, dim=-1
+            )
             filtered_targets = y_val[valid_mask]
+
+            # Plot histograms for each token
+            num_tokens = len(filtered_targets)
+            fig, axes = plt.subplots(num_tokens, 1, figsize=(10, num_tokens * 2))
+            if num_tokens == 1:
+                axes = [axes]  # Ensure axes is iterable for a single subplot
 
             for i, (target, top_indices, top_probs) in enumerate(
                 zip(filtered_targets, top_k_indices, top_k_probs)
             ):
-                target_text = tokenizer.decode([target.item()])
+                token_text = tokenizer.decode([target.item()])
+                ax = axes[i]
 
-                logger.info(f"Sequence token {i}:")
-                logger.info(f"  Target Index: {target.item()} -> '{target_text}'")
-                logger.info(f"  Top Predictions:")
-                for rank, (token, prob) in enumerate(
-                    zip(top_indices.tolist(), top_probs.tolist()), start=1
-                ):
-                    token_text = tokenizer.decode([token])
-                    logger.info(
-                        f"    {rank}. Index: {token} -> '{token_text}', Probability: {prob:.4f}"
-                    )
+                ax.bar(range(num_logits_to_print), top_probs.cpu().numpy())
+                ax.set_title(f"Token {i}: {token_text}")
+                ax.set_xticks(range(num_logits_to_print))
+                ax.set_xticklabels(
+                    [tokenizer.decode([idx]) for idx in top_indices.cpu().numpy()],
+                    rotation=45,
+                    ha="right",
+                )
+                ax.set_ylabel("Logit Value")
+                ax.set_xlabel("Top-k Predictions")
+
+            plt.tight_layout()
+            plt.show()
 
             total_val_loss += val_loss.item()
             logger.info(f"Validation Batch Loss: {val_loss.item():.4f}")
