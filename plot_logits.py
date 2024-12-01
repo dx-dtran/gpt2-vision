@@ -214,44 +214,39 @@ def validate_model(
 
             valid_mask = y_val != -100
 
-            filtered_logits = logits[valid_mask]
-
-            num_logits_to_print = 10
-
-            top_k_probs, top_k_indices = torch.topk(
-                filtered_logits, k=num_logits_to_print, dim=-1
-            )
             filtered_targets = y_val[valid_mask]
-
-            # Plot histograms for each token
+            num_logits_to_print = 10
             num_tokens = len(filtered_targets)
-            cols = 3
+            cols = 5
             rows = math.ceil(num_tokens / cols)
             fig, axes = plt.subplots(rows, cols, figsize=(15, rows * 3))
 
-            axes = (
-                axes.flatten()
-            )  # Flatten axes to easily iterate even for single-row layouts
+            axes = axes.flatten()
 
-            for i, (target, top_indices, top_probs) in enumerate(
-                zip(filtered_targets, top_k_indices, top_k_probs)
+            for i, (target, logit_row) in enumerate(
+                zip(filtered_targets, logits[valid_mask])
             ):
                 token_text = tokenizer.decode([target.item()])
                 ax = axes[i]
 
-                # Apply softmax to normalize the top-k logits
-                normalized_probs = F.softmax(top_probs, dim=0).cpu().numpy()
+                softmax_probs = F.softmax(logit_row, dim=0).cpu().numpy()
 
-                ax.bar(range(num_logits_to_print), normalized_probs)
+                top_k_probs_indices = torch.topk(
+                    torch.tensor(softmax_probs), k=num_logits_to_print
+                )
+                top_k_probs = top_k_probs_indices.values.numpy()
+                top_k_indices = top_k_probs_indices.indices.numpy()
+
+                ax.bar(range(num_logits_to_print), top_k_probs)
                 ax.set_title(f"Token {i}: {token_text}")
                 ax.set_xticks(range(num_logits_to_print))
                 ax.set_xticklabels(
-                    [tokenizer.decode([idx]) for idx in top_indices.cpu().numpy()],
+                    [tokenizer.decode([idx]) for idx in top_k_indices],
                     rotation=45,
                     ha="right",
                 )
-                ax.set_ylabel("Normalized Probability")
-                ax.set_xlabel("Top-k Predictions")
+                ax.set_ylabel("Softmax Probability")
+                ax.set_xlabel("Top Predictions")
 
             # Hide unused subplots
             for j in range(i + 1, len(axes)):
@@ -291,12 +286,12 @@ if __name__ == "__main__":
     coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
-    connector_weights_path = "vl_connector.pt"
+    connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
+    # connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess = load_clip(device)
-    # connector = VisionLanguageConnectorBad()
-    connector = VisionLanguageConnector()
+    connector = VisionLanguageConnectorBad()
+    # connector = VisionLanguageConnector()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
 
     connector = connector.to(device)
