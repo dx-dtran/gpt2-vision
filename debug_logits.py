@@ -6,6 +6,7 @@ import logging
 import pytz
 import torch
 import torch.optim as optim
+import matplotlib.pyplot as plt
 from datetime import datetime
 from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import GPT2Tokenizer
@@ -208,21 +209,20 @@ def validate_model(
 
             logits = logits.view(
                 -1, logits.size(-1)
-            )  # Shape: [batch_size * seq_length, vocab_size]
-            y_val = y_val.view(-1)  # Shape: [batch_size * seq_length]
+            )
+            y_val = y_val.view(-1)
 
-            # Create a mask for valid targets (targets != -100)
-            valid_mask = y_val != -100  # Shape: [batch_size * seq_length]
+            valid_mask = y_val != -100
 
-            # Filter logits for valid rows
-            filtered_logits = logits[valid_mask]  # Shape: [num_valid, vocab_size]
+            filtered_logits = logits[valid_mask]
 
-            # Get the top 3 argmax indices for each row
-            top_3_probs, top_3_indices = torch.topk(filtered_logits, k=10, dim=-1)
+            num_logits_to_print = 10
+
+            top_k_probs, top_k_indices = torch.topk(filtered_logits, k=num_logits_to_print, dim=-1)
             filtered_targets = y_val[valid_mask]
 
             for i, (target, top_indices, top_probs) in enumerate(
-                zip(filtered_targets, top_3_indices, top_3_probs)
+                zip(filtered_targets, top_k_indices, top_k_probs)
             ):
                 target_text = tokenizer.decode([target.item()])
 
