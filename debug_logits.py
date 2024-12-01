@@ -7,6 +7,7 @@ import pytz
 import math
 import torch
 import torch.optim as optim
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from datetime import datetime
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -238,7 +239,10 @@ def validate_model(
                 token_text = tokenizer.decode([target.item()])
                 ax = axes[i]
 
-                ax.bar(range(num_logits_to_print), top_probs.cpu().numpy())
+                # Apply softmax to normalize the top-k logits
+                normalized_probs = F.softmax(top_probs, dim=0).cpu().numpy()
+
+                ax.bar(range(num_logits_to_print), normalized_probs)
                 ax.set_title(f"Token {i}: {token_text}")
                 ax.set_xticks(range(num_logits_to_print))
                 ax.set_xticklabels(
@@ -246,7 +250,7 @@ def validate_model(
                     rotation=45,
                     ha="right",
                 )
-                ax.set_ylabel("Logit Value")
+                ax.set_ylabel("Normalized Probability")
                 ax.set_xlabel("Top-k Predictions")
 
             # Hide unused subplots
