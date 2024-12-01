@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    image_folder = "D:/coco/val2017"
+    image_folder = "../coco/val2017"
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"

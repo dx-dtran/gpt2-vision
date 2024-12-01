@@ -287,8 +287,8 @@ if __name__ == "__main__":
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 1
-    coco_root_dir = "D:/coco/val2017"
-    coco_ann_file = "D:/coco/annotations/captions_val2017.json"
+    coco_root_dir = "../coco/val2017"
+    coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     connector_weights_path = "vl_connector_large_mlp_collapsed.pt"
