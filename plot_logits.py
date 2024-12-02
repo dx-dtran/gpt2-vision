@@ -15,7 +15,7 @@ from transformers import GPT2Tokenizer
 from PIL import Image
 from gpt import GPT, GPTConfig, transpose_specific_layers
 from clip import load_clip
-from vision_language_connector_bad import VisionLanguageConnectorBad
+from vision_language_connector_residual import VisionLanguageConnectorBad
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"

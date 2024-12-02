@@ -14,7 +14,7 @@ from transformers import GPT2Tokenizer
 from PIL import Image
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 from clip import load_clip
-from vision_language_connector import VisionLanguageConnector
+from vision_language_connector_residual import VisionLanguageConnectorResidual
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 
@@ -118,13 +118,13 @@ def freeze_model_parameters(model):
 
 def prepare_training_components(learning_rate, weight_decay):
     vision_encoder, preprocess = load_clip()
-    connector = VisionLanguageConnector()
+    connector = VisionLanguageConnectorResidual()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, verbose=True, min_lr=1e-7
+        optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-7
     )
     return vision_encoder, preprocess, connector, optimizer, scheduler
 
