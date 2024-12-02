@@ -6,7 +6,7 @@ class VisionLanguageConnectorResidual(nn.Module):
         self,
         vision_embed_dim=768,
         language_embed_dim=768,
-        hidden_multiplier=4,
+        hidden_multiplier=2,
         num_layers=2,
         dropout_rate=0.1,
     ):
