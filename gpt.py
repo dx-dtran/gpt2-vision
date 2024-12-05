@@ -210,7 +210,14 @@ class GPT(nn.Module):
 
         return tokens
 
-    def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
+    def forward(
+        self,
+        x,
+        visual_embeds=None,
+        targets=None,
+        padding_mask=None,
+        label_smoothing=0.1,
+    ):
         text_embeds = self.wte(x)
 
         # Apply positional embeddings to text tokens only
@@ -253,10 +260,43 @@ class GPT(nn.Module):
             vocab_size = logits.size(-1)
             logits = logits.view(-1, vocab_size)
             targets = targets.view(-1)
-            loss = F.cross_entropy(logits, targets, ignore_index=-100)
+
+            if label_smoothing > 0:
+                loss = cross_entropy_with_label_smoothing(
+                    logits, targets, eps=label_smoothing, ignore_index=-100
+                )
+            else:
+                loss = F.cross_entropy(logits, targets, ignore_index=-100)
             return logits, loss
 
         return logits, None
+
+
+def cross_entropy_with_label_smoothing(logits, targets, eps=0.1, ignore_index=-100):
+    vocab_size = logits.size(-1)
+
+    target_mask = (targets != ignore_index).float()
+
+    valid_targets = targets.clone()
+    valid_targets[valid_targets == ignore_index] = 0
+    target_one_hot = torch.zeros_like(logits).scatter_(
+        1, valid_targets.unsqueeze(1), 1.0
+    )
+
+    target_one_hot = target_one_hot * target_mask.unsqueeze(1)
+
+    confidence = 1.0 - eps
+    low_confidence = eps / (vocab_size - 1)
+    smoothed_labels = (
+        target_one_hot * confidence + (1.0 - target_one_hot) * low_confidence
+    )
+    smoothed_labels = smoothed_labels * target_mask.unsqueeze(1)
+
+    log_probs = F.log_softmax(logits, dim=-1)
+    loss = -(smoothed_labels * log_probs).sum(dim=-1)
+
+    valid_positions = target_mask.sum()
+    return loss.sum() / (valid_positions + 1e-6)
 
 
 def transpose_specific_layers(state_dict):
