@@ -46,7 +46,8 @@ class CausalSelfAttention(nn.Module):
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
 
         if mask is not None:
-            att = att + mask
+            mask = mask.bool()
+            att = att.masked_fill(~mask, float("-inf"))
 
         att = torch.softmax(att, dim=-1)
         att = self.attn_dropout(att)
@@ -128,7 +129,8 @@ class GPT(nn.Module):
 
     def _create_causal_mask(self, length: int):
         mask = torch.tril(torch.ones((length, length), dtype=torch.float32))
-        return mask.view(1, 1, length, length).to(self.wte.weight.device).bool()
+        mask = mask.bool()
+        return mask.view(1, 1, length, length).to(self.wte.weight.device)
 
     def _create_vision_language_mask(self, seq_length: int, num_visual_tokens: int):
         mask = torch.zeros((seq_length, seq_length), dtype=torch.float32)
@@ -142,10 +144,10 @@ class GPT(nn.Module):
             torch.ones(text_length, text_length, dtype=torch.float32)
         )
         mask[num_visual_tokens:, num_visual_tokens:] = causal_text_mask
-
         mask = mask.view(1, 1, seq_length, seq_length)
+        mask = mask.bool()
 
-        return mask.to(self.wte.weight.device).bool()
+        return mask.to(self.wte.weight.device)
 
     def _sample_next_token(self, x, temperature):
         logits = x[:, -1:] @ self.wte.weight.T
@@ -210,7 +212,13 @@ class GPT(nn.Module):
 
         return tokens
 
-    def forward(self, x, visual_embeds=None, targets=None, padding_mask=None):
+    def forward(
+        self,
+        x,
+        visual_embeds=None,
+        targets=None,
+        padding_mask=None,
+    ):
         text_embeds = self.wte(x)
 
         # Apply positional embeddings to text tokens only
@@ -254,13 +262,36 @@ class GPT(nn.Module):
             logits = logits.view(-1, vocab_size)
             targets = targets.view(-1)
             loss = F.cross_entropy(logits, targets, ignore_index=-100)
-
-            valid_tokens = (targets != -100).sum().item()
-            normalized_loss = loss / valid_tokens
-
-            return logits, normalized_loss
+            return logits, loss
 
         return logits, None
+
+
+def cross_entropy_with_label_smoothing(logits, targets, eps=0.1, ignore_index=-100):
+    vocab_size = logits.size(-1)
+
+    target_mask = (targets != ignore_index).float()
+
+    valid_targets = targets.clone()
+    valid_targets[valid_targets == ignore_index] = 0
+    target_one_hot = torch.zeros_like(logits).scatter_(
+        1, valid_targets.unsqueeze(1), 1.0
+    )
+
+    target_one_hot = target_one_hot * target_mask.unsqueeze(1)
+
+    confidence = 1.0 - eps
+    low_confidence = eps / (vocab_size - 1)
+    smoothed_labels = (
+        target_one_hot * confidence + (1.0 - target_one_hot) * low_confidence
+    )
+    smoothed_labels = smoothed_labels * target_mask.unsqueeze(1)
+
+    log_probs = F.log_softmax(logits, dim=-1)
+    loss = -(smoothed_labels * log_probs).sum(dim=-1)
+
+    valid_positions = target_mask.sum()
+    return loss.sum() / (valid_positions + 1e-6)
 
 
 def transpose_specific_layers(state_dict):

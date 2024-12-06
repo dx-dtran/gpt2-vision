@@ -2,37 +2,23 @@ import os
 import sys
 import json
 import gc
-import time
 import logging
-import matplotlib.pyplot as plt
 import pytz
+import math
 import torch
 import torch.optim as optim
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 from datetime import datetime
 from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import GPT2Tokenizer
 from PIL import Image
-from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
+from gpt import GPT, GPTConfig, transpose_specific_layers
 from clip import load_clip
 from vision_language_connector_residual import VisionLanguageConnectorResidual
+from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
-
-
-def save_image_and_caption_to_png(folder, image_tensor, caption, iteration):
-    image = image_tensor.cpu().numpy().transpose(1, 2, 0)
-    plt.figure(figsize=(8, 8))
-    plt.imshow(image)
-    plt.axis("off")
-    plt.title(f"Iteration {iteration}: {caption}", wrap=True)
-    png_filename = os.path.join(folder, f"iteration_{iteration}.png")
-    plt.savefig(png_filename)
-    plt.close()
-
-
-def save_connector_weights(connector, folder, iteration):
-    filename = os.path.join(folder, f"connector_weights_{iteration}.pt")
-    torch.save(connector.state_dict(), filename)
 
 
 def setup_logger():
@@ -101,32 +87,32 @@ class COCODataset(Dataset):
         return image, caption
 
 
-def load_model_and_tokenizer():
+def load_model_and_tokenizer(device):
     config = GPTConfig()
     model = GPT(config)
     state_dict = torch.load("gpt2.pt", map_location="cpu")
     state_dict_transposed = transpose_specific_layers(state_dict)
     model.load_state_dict(state_dict_transposed, strict=False)
+    model = model.to(device)
     tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
     return model, tokenizer
 
 
-def freeze_model_parameters(model):
-    for param in model.parameters():
-        param.requires_grad = False
-
-
 def prepare_training_components(learning_rate, weight_decay):
     vision_encoder, preprocess = load_clip()
-    connector = VisionLanguageConnectorResidual()
     optimizer = optim.AdamW(
         connector.parameters(), lr=learning_rate, weight_decay=weight_decay
     )
 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=2, min_lr=1e-7
+        optimizer, mode="min", factor=0.5, patience=2, verbose=True, min_lr=1e-7
     )
     return vision_encoder, preprocess, connector, optimizer, scheduler
+
+
+def freeze_model_parameters(model):
+    for param in model.parameters():
+        param.requires_grad = False
 
 
 def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
@@ -169,140 +155,6 @@ def tokenize_and_prepare_batches(captions, tokenizer, batch_size, num_patches):
     del tokenized_captions, x_train, current_sequence, shifted_sequence
     gc.collect()
     return x_train_padded, y_train, padding_mask
-
-
-def train_model(
-    model,
-    connector,
-    vision_encoder,
-    tokenizer,
-    data_loader,
-    val_data_loader,
-    optimizer,
-    scheduler,
-    epochs,
-    batch_size,
-    gradient_accumulation_steps,
-    max_grad_norm,
-    device,
-):
-    model.to(device)
-    vision_encoder.to(device)
-    connector.to(device)
-
-    model.eval()
-    vision_encoder.eval()
-    connector.train()
-
-    pacific_time = pytz.timezone("US/Pacific")
-    timestamp = datetime.now(pacific_time).strftime("%Y-%m-%d_%H-%M-%S")
-    output_folder = f"training_results_{timestamp}"
-    os.makedirs(output_folder, exist_ok=True)
-
-    weights_output_folder = f"weights_results_{timestamp}"
-    os.makedirs(weights_output_folder, exist_ok=True)
-
-    for epoch in range(epochs):
-        epoch_loss = 0
-        optimizer.zero_grad()
-
-        for i, (images, captions) in enumerate(data_loader):
-            start_time = time.time()
-
-            images = images.to(device)
-
-            image_features = vision_encoder.encode_image(images)
-            image_features = image_features.to(device).to(
-                next(connector.parameters()).dtype
-            )
-            vision_embed = connector(image_features)
-            vision_embed = vision_embed.to(device).to(
-                next(connector.parameters()).dtype
-            )
-            num_patches = vision_embed.size(1)
-
-            if len(captions) != batch_size:
-                logger.info(f"Skipping batch {i + 1} due to mismatched batch size.")
-                del images, image_features, vision_embed
-                torch.cuda.empty_cache()
-                gc.collect()
-                continue
-
-            x_train_padded, y_train, padding_mask = tokenize_and_prepare_batches(
-                captions, tokenizer, batch_size, num_patches
-            )
-
-            x_train_padded = x_train_padded.to(device)
-            y_train = y_train.to(device)
-            padding_mask = padding_mask.to(device)
-
-            logits, loss = model(
-                x_train_padded,
-                vision_embed,
-                targets=y_train,
-                padding_mask=padding_mask,
-            )
-            loss = loss / gradient_accumulation_steps
-            loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(connector.parameters(), max_grad_norm)
-
-            if (i + 1) % gradient_accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
-
-            epoch_loss += loss.item() * gradient_accumulation_steps
-
-            end_time = time.time()
-            iteration_time = end_time - start_time
-
-            logger.info(
-                f"Batch {i + 1}/{len(data_loader)} - Loss: {loss.item() * gradient_accumulation_steps:.4f} - LR: {optimizer.param_groups[0]['lr']:.9f} - Iter: {iteration_time:.4f} sec"
-            )
-
-            if (i + 1) % 300 == 0:
-                generated_text = generate_text(
-                    model, tokenizer, vision_embeds=vision_embed[0]
-                )
-                save_image_and_caption_to_png(
-                    output_folder, images[0], generated_text, f"{i + 1}_{epoch}"
-                )
-
-                val_loss = validate_model(
-                    model,
-                    connector,
-                    vision_encoder,
-                    tokenizer,
-                    val_data_loader,
-                    batch_size,
-                    device,
-                )
-
-                scheduler.step(val_loss)
-
-            if (i + 1) % 1000 == 0:
-                save_connector_weights(
-                    connector, weights_output_folder, f"{i + 1}_{epoch}"
-                )
-
-            del (
-                images,
-                image_features,
-                vision_embed,
-                x_train_padded,
-                y_train,
-                padding_mask,
-            )
-            torch.cuda.empty_cache()
-            gc.collect()
-
-        logger.info(
-            f"Epoch {epoch + 1}/{epochs} - Average Loss: {epoch_loss / len(data_loader):.6f}"
-        )
-        torch.cuda.empty_cache()
-        gc.collect()
-
-    logger.info("Training complete.")
 
 
 def validate_model(
@@ -357,6 +209,52 @@ def validate_model(
                 x_val_padded, vision_embed, targets=y_val, padding_mask=padding_mask
             )
 
+            logits = logits.view(-1, logits.size(-1))
+            y_val = y_val.view(-1)
+
+            valid_mask = y_val != -100
+
+            filtered_targets = y_val[valid_mask]
+            num_logits_to_print = 10
+            num_tokens = len(filtered_targets)
+            cols = 5
+            rows = math.ceil(num_tokens / cols)
+            fig, axes = plt.subplots(rows, cols, figsize=(15, rows * 3))
+
+            axes = axes.flatten()
+
+            for i, (target, logit_row) in enumerate(
+                zip(filtered_targets, logits[valid_mask])
+            ):
+                token_text = tokenizer.decode([target.item()])
+                ax = axes[i]
+
+                softmax_probs = F.softmax(logit_row, dim=0).cpu().numpy()
+
+                top_k_probs_indices = torch.topk(
+                    torch.tensor(softmax_probs), k=num_logits_to_print
+                )
+                top_k_probs = top_k_probs_indices.values.numpy()
+                top_k_indices = top_k_probs_indices.indices.numpy()
+
+                ax.bar(range(num_logits_to_print), top_k_probs)
+                ax.set_title(f"Token {i}: {token_text}")
+                ax.set_xticks(range(num_logits_to_print))
+                ax.set_xticklabels(
+                    [tokenizer.decode([idx]) for idx in top_k_indices],
+                    rotation=45,
+                    ha="right",
+                )
+                ax.set_ylabel("Softmax Probability")
+                ax.set_xlabel("Top Predictions")
+
+            # Hide unused subplots
+            for j in range(i + 1, len(axes)):
+                axes[j].axis("off")
+
+            plt.tight_layout()
+            plt.show()
+
             total_val_loss += val_loss.item()
             logger.info(f"Validation Batch Loss: {val_loss.item():.4f}")
 
@@ -378,18 +276,26 @@ def validate_model(
 
 
 if __name__ == "__main__":
-    BATCH_SIZE = 32
+    BATCH_SIZE = 1
     EPOCHS = 5
     LEARNING_RATE = 1e-4
     WEIGHT_DECAY = 1e-2
     CLIP_GRAD_NORM = 1.0
     GRADIENT_ACCUMULATION_STEPS = 1
-    coco_root_dir = "../coco/train2017"
-    coco_ann_file = "../coco/annotations/captions_train2017.json"
+    coco_root_dir = "../coco/val2017"
+    coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    vision_encoder, preprocess, connector, optimizer, scheduler = (
-        prepare_training_components(LEARNING_RATE, WEIGHT_DECAY)
-    )
+
+    connector_weights_path = "connector_weights_16000_2-residual-2l-2d.pt"
+    # connector_weights_path = "vl_connector.pt"
+
+    vision_encoder, preprocess = load_clip(device)
+    connector = VisionLanguageConnectorResidual()
+    # connector = VisionLanguageConnector()
+    connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
+
+    connector = connector.to(device)
+
     freeze_model_parameters(vision_encoder)
 
     coco_dataset = COCODataset(coco_root_dir, coco_ann_file, transform=preprocess)
@@ -397,33 +303,23 @@ if __name__ == "__main__":
     val_size = len(coco_dataset) - train_size
     train_dataset, val_dataset = random_split(coco_dataset, [train_size, val_size])
 
-    coco_dataloader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
-    )
     val_dataloader = DataLoader(
-        val_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=1
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=1
     )
 
-    model, tokenizer = load_model_and_tokenizer()
+    model, tokenizer = load_model_and_tokenizer(device)
     freeze_model_parameters(model)
 
     logger, log_filename = setup_logger()
     sys.stdout = LoggerWriter(logger, logging.INFO)
     sys.stderr = LoggerWriter(logger, logging.ERROR)
-
-    train_model(
+    val_loss = validate_model(
         model,
         connector,
         vision_encoder,
         tokenizer,
-        coco_dataloader,
         val_dataloader,
-        optimizer,
-        scheduler,
-        EPOCHS,
         BATCH_SIZE,
-        GRADIENT_ACCUMULATION_STEPS,
-        CLIP_GRAD_NORM,
         device,
     )
 

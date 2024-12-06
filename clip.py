@@ -40,8 +40,8 @@ def load_clip(
         state_dict = torch.load(opened_file, map_location="cpu")
 
     model = CLIP()
-
     model.load_state_dict(state_dict, strict=False)
+    model = model.to(device)
 
     if str(device) == "cpu":
         model.float()
