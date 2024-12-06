@@ -7,7 +7,7 @@ from PIL import Image
 from matplotlib.gridspec import GridSpec
 from transformers import GPT2Tokenizer
 from clip import load_clip
-from vision_language_connector_residual import VisionLanguageConnectorResidual
+from vision_language_connector import VisionLanguageConnector
 from gpt import GPT, GPTConfig, transpose_specific_layers, generate_text
 
 
@@ -21,7 +21,7 @@ def load_models_and_tokenizer(gpt_model_path, connector_weights_path, device):
     model.load_state_dict(state_dict_transposed, strict=False)
     model = model.to(device)
 
-    connector = VisionLanguageConnectorResidual()
+    connector = VisionLanguageConnector()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
     connector = connector.to(device)
 
@@ -73,7 +73,7 @@ def process_images_and_generate_text(
             )
 
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.2
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.1
         )
 
         save_image_and_caption_to_png(
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
-    connector_weights_path = "connector_weights_7000_0-residual.pt"
+    connector_weights_path = "connector_weights_1000_0.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_weights_path, connector_weights_path, device

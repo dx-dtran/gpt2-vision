@@ -89,9 +89,9 @@ def load_and_plot_validation_loss(log_file_path):
 
 
 if __name__ == "__main__":
-    log_file_path = "training_log_2024-11-27_23-13-22.log"
+    log_file_path = "training_log_2024-12-05_20-28-29.log"
     smoothing_factor = 0.1
     load_and_plot_loss(log_file_path, smoothing_factor=smoothing_factor)
 
-    val_log_file_path = "training_log_2024-11-27_23-13-22.log"
+    val_log_file_path = "training_log_2024-12-05_20-28-29.log"
     load_and_plot_validation_loss(val_log_file_path)

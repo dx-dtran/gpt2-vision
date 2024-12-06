@@ -15,7 +15,6 @@ from transformers import GPT2Tokenizer
 from PIL import Image
 from gpt import GPT, GPTConfig, transpose_specific_layers
 from clip import load_clip
-from vision_language_connector_residual import VisionLanguageConnectorResidual
 from vision_language_connector import VisionLanguageConnector
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
@@ -286,12 +285,10 @@ if __name__ == "__main__":
     coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    connector_weights_path = "connector_weights_16000_2-residual-2l-2d.pt"
-    # connector_weights_path = "vl_connector.pt"
+    connector_weights_path = "connector_weights_1000_0.pt"
 
     vision_encoder, preprocess = load_clip(device)
-    connector = VisionLanguageConnectorResidual()
-    # connector = VisionLanguageConnector()
+    connector = VisionLanguageConnector()
     connector.load_state_dict(torch.load(connector_weights_path, map_location="cpu"))
 
     connector = connector.to(device)
