@@ -218,7 +218,6 @@ class GPT(nn.Module):
         visual_embeds=None,
         targets=None,
         padding_mask=None,
-        label_smoothing=0.1,
     ):
         text_embeds = self.wte(x)
 
@@ -262,13 +261,7 @@ class GPT(nn.Module):
             vocab_size = logits.size(-1)
             logits = logits.view(-1, vocab_size)
             targets = targets.view(-1)
-
-            if label_smoothing > 0:
-                loss = cross_entropy_with_label_smoothing(
-                    logits, targets, eps=label_smoothing, ignore_index=-100
-                )
-            else:
-                loss = F.cross_entropy(logits, targets, ignore_index=-100)
+            loss = F.cross_entropy(logits, targets, ignore_index=-100)
             return logits, loss
 
         return logits, None
