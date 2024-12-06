@@ -112,7 +112,7 @@ if __name__ == "__main__":
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
-    connector_weights_path = "connector_weights_3000_0.pt"
+    connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_weights_path, connector_weights_path, device

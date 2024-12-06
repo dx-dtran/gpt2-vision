@@ -285,7 +285,7 @@ if __name__ == "__main__":
     coco_ann_file = "../coco/annotations/captions_val2017.json"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    connector_weights_path = "connector_weights_1000_0.pt"
+    connector_weights_path = "vl_connector.pt"
 
     vision_encoder, preprocess = load_clip(device)
     connector = VisionLanguageConnector()
