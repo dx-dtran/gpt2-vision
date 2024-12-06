@@ -4,7 +4,6 @@ import random
 import time
 import matplotlib.pyplot as plt
 from PIL import Image
-from matplotlib.gridspec import GridSpec
 from transformers import GPT2Tokenizer
 from clip import load_clip
 from vision_language_connector import VisionLanguageConnector
@@ -59,7 +58,7 @@ def process_images_and_generate_text(
             break
 
         image_path = os.path.join(image_folder, image_filename)
-        image = Image.open(image_path)
+        image = Image.open(image_path).convert("RGB")
         image_tensor = preprocess(image).unsqueeze(0).to(device)
 
         with torch.no_grad():
@@ -73,7 +72,7 @@ def process_images_and_generate_text(
             )
 
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.1
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.2
         )
 
         save_image_and_caption_to_png(
@@ -82,25 +81,28 @@ def process_images_and_generate_text(
 
 
 def save_image_and_caption_to_png(folder, image, caption, image_filename):
-    fig = plt.figure(figsize=(8, 10))
-    gs = GridSpec(2, 1, height_ratios=[10, 1])
+    fig, (ax_image, ax_caption) = plt.subplots(
+        2,
+        1,
+        figsize=(8, 8),
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": [10, 1]},
+    )
 
-    ax_image = fig.add_subplot(gs[0])
     ax_image.imshow(image)
     ax_image.axis("off")
 
-    ax_caption = fig.add_subplot(gs[1])
+    ax_image.set_aspect("equal", adjustable="box")
+
     ax_caption.text(0.5, 0.5, caption, ha="center", va="center", wrap=True, fontsize=12)
     ax_caption.axis("off")
 
     png_filename = os.path.join(folder, f"{os.path.splitext(image_filename)[0]}.png")
     plt.savefig(png_filename, bbox_inches="tight", pad_inches=0.1)
-
     plt.close()
 
 
 if __name__ == "__main__":
-
     current_time = time.time()
     current_time = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(current_time))
 
@@ -110,7 +112,7 @@ if __name__ == "__main__":
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
-    connector_weights_path = "connector_weights_1000_0.pt"
+    connector_weights_path = "connector_weights_3000_0.pt"
 
     vision_encoder, preprocess, model, connector, tokenizer = load_models_and_tokenizer(
         gpt_weights_path, connector_weights_path, device
