@@ -46,7 +46,8 @@ class CausalSelfAttention(nn.Module):
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
 
         if mask is not None:
-            att = att + mask
+            mask = mask.bool()
+            att = att.masked_fill(~mask, float("-inf"))
 
         att = torch.softmax(att, dim=-1)
         att = self.attn_dropout(att)
@@ -128,7 +129,8 @@ class GPT(nn.Module):
 
     def _create_causal_mask(self, length: int):
         mask = torch.tril(torch.ones((length, length), dtype=torch.float32))
-        return mask.view(1, 1, length, length).to(self.wte.weight.device).bool()
+        mask = mask.bool()
+        return mask.view(1, 1, length, length).to(self.wte.weight.device)
 
     def _create_vision_language_mask(self, seq_length: int, num_visual_tokens: int):
         mask = torch.zeros((seq_length, seq_length), dtype=torch.float32)
@@ -142,10 +144,10 @@ class GPT(nn.Module):
             torch.ones(text_length, text_length, dtype=torch.float32)
         )
         mask[num_visual_tokens:, num_visual_tokens:] = causal_text_mask
-
         mask = mask.view(1, 1, seq_length, seq_length)
+        mask = mask.bool()
 
-        return mask.to(self.wte.weight.device).bool()
+        return mask.to(self.wte.weight.device)
 
     def _sample_next_token(self, x, temperature):
         logits = x[:, -1:] @ self.wte.weight.T
