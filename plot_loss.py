@@ -95,37 +95,32 @@ def load_and_plot_validation_loss(log_file_path):
     plt.show()
 
 
-def compare_losses(file1, file2, smoothing_factor=0.1, max_iterations=None):
-    timestamps1, losses1, smoothed_losses1 = load_loss_from_file(
-        file1, smoothing_factor
-    )
-    timestamps2, losses2, smoothed_losses2 = load_loss_from_file(
-        file2, smoothing_factor
-    )
-
-    if max_iterations is not None:
-        timestamps1, losses1, smoothed_losses1 = [
-            x[:max_iterations] for x in (timestamps1, losses1, smoothed_losses1)
-        ]
-        timestamps2, losses2, smoothed_losses2 = [
-            x[:max_iterations] for x in (timestamps2, losses2, smoothed_losses2)
-        ]
+def compare_multiple_losses(log_files, smoothing_factor=0.1, max_iterations=None):
 
     plt.figure(figsize=(12, 6))
-    plt.plot(timestamps1, losses1, label=f"Original Loss (File 1)", alpha=0.5)
-    plt.plot(
-        timestamps1,
-        smoothed_losses1,
-        label=f"Smoothed Loss (File 1, α={smoothing_factor})",
-        linewidth=2,
-    )
-    plt.plot(timestamps2, losses2, label=f"Original Loss (File 2)", alpha=0.5)
-    plt.plot(
-        timestamps2,
-        smoothed_losses2,
-        label=f"Smoothed Loss (File 2, α={smoothing_factor})",
-        linewidth=2,
-    )
+
+    for i, log_file in enumerate(log_files):
+        timestamps, losses, smoothed_losses = load_loss_from_file(
+            log_file, smoothing_factor
+        )
+
+        if max_iterations is not None:
+            timestamps, losses, smoothed_losses = [
+                x[:max_iterations] for x in (timestamps, losses, smoothed_losses)
+            ]
+
+        plt.plot(
+            timestamps,
+            smoothed_losses,
+            label=f"Smoothed Loss (File {i+1}, α={smoothing_factor})",
+            linewidth=2,
+        )
+        plt.plot(
+            timestamps,
+            losses,
+            label=f"Original Loss (File {i+1})",
+            alpha=0.5,
+        )
 
     plt.xlabel("Time (log index)")
     plt.ylabel("Loss")
@@ -139,16 +134,18 @@ def compare_losses(file1, file2, smoothing_factor=0.1, max_iterations=None):
 
 if __name__ == "__main__":
     smoothing_factor = 0.1
-    log_file_path = "training_log_2024-12-06_08-16-57.log"
+    log_file_path = "training_log_2024-12-06_08-16-57-no-vlm-mask.log"
     load_and_plot_loss(log_file_path, smoothing_factor=smoothing_factor)
-    val_log_file_path = "training_log_2024-12-06_08-16-57.log"
+    val_log_file_path = "training_log_2024-12-06_08-16-57-no-vlm-mask.log"
     load_and_plot_validation_loss(val_log_file_path)
 
-    log_file1_path = "training_log_2024-12-06_08-16-57.log"
-    log_file2_path = "training_log_2024-12-05_21-23-22.log"
-    compare_losses(
-        log_file1_path,
-        log_file2_path,
+    loss_files = [
+        "training_log_2024-12-06_08-16-57-no-vlm-mask.log",
+        "training_log_2024-12-05_21-23-22.log",
+        "training_log_2024-12-07_17-07-07.log",
+    ]
+    compare_multiple_losses(
+        loss_files,
         max_iterations=5000,
         smoothing_factor=smoothing_factor,
     )
