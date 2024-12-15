@@ -27,12 +27,13 @@ def load_models_and_tokenizer(gpt_model_path, connector_weights_path, device):
     return vision_encoder, preprocess, model, connector, tokenizer
 
 
-def process_images_and_map_embeddings(
+def process_images_and_generate_tokens(
     image_folder,
     vision_encoder,
     preprocess,
     connector,
     gpt_model,
+    tokenizer,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vision_encoder.to(device)
@@ -65,16 +66,14 @@ def process_images_and_map_embeddings(
                     embedding.unsqueeze(0), gpt2_embedding_matrix, dim=1
                 )
                 closest_idx = torch.argmax(similarity).item()
-                results.append((closest_idx, similarity[closest_idx].item()))
+                results.append(closest_idx)
 
             print(f"Image: {image_filename}")
-            for idx, (token_idx, similarity) in enumerate(results):
-                print(
-                    f"  Visual Embedding {idx}: Closest GPT-2 Token = {token_idx}, Similarity = {similarity:.4f}"
-                )
+            decoded_tokens = tokenizer.decode(results)
+            print(f"  Decoded Tokens: {decoded_tokens}")
 
 
-if __name__ == "__main__":
+def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     image_folder = "../coco/val2017"
@@ -82,14 +81,19 @@ if __name__ == "__main__":
     gpt_weights_path = "gpt2.pt"
     connector_weights_path = "connector_weights_1_0.pt"
 
-    vision_encoder, preprocess, gpt_model, connector, _ = load_models_and_tokenizer(
-        gpt_weights_path, connector_weights_path, device
+    vision_encoder, preprocess, gpt_model, connector, tokenizer = (
+        load_models_and_tokenizer(gpt_weights_path, connector_weights_path, device)
     )
 
-    process_images_and_map_embeddings(
+    process_images_and_generate_tokens(
         image_folder,
         vision_encoder,
         preprocess,
         connector,
         gpt_model,
+        tokenizer,
     )
+
+
+if __name__ == "__main__":
+    main()
