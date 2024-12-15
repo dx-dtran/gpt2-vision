@@ -27,6 +27,17 @@ def load_models_and_tokenizer(gpt_model_path, connector_weights_path, device):
     return vision_encoder, preprocess, model, connector, tokenizer
 
 
+def find_closest_indices(vision_embed, gpt2_embedding_matrix):
+    results = []
+    for embedding in vision_embed:
+        similarity = torch.nn.functional.cosine_similarity(
+            embedding.unsqueeze(0), gpt2_embedding_matrix, dim=1
+        )
+        closest_idx = torch.argmax(similarity).item()
+        results.append(closest_idx)
+    return results
+
+
 def process_images_and_generate_tokens(
     image_folder,
     vision_encoder,
@@ -60,16 +71,12 @@ def process_images_and_generate_tokens(
             vision_embed = connector(image_features)
 
             gpt2_embedding_matrix = gpt_model.wte.weight
-            results = []
-            for embedding in vision_embed[0]:
-                similarity = torch.nn.functional.cosine_similarity(
-                    embedding.unsqueeze(0), gpt2_embedding_matrix, dim=1
-                )
-                closest_idx = torch.argmax(similarity).item()
-                results.append(closest_idx)
+            closest_indices = find_closest_indices(
+                vision_embed[0], gpt2_embedding_matrix
+            )
 
             print(f"Image: {image_filename}")
-            decoded_tokens = tokenizer.decode(results)
+            decoded_tokens = tokenizer.decode(closest_indices)
             print(f"  Decoded Tokens: {decoded_tokens}")
 
 
