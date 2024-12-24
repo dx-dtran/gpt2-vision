@@ -29,6 +29,17 @@ def load_models_and_tokenizer(gpt_model_path, connector_weights_path, device):
     return vision_encoder, preprocess, model, connector, tokenizer
 
 
+def find_closest_indices(vision_embed, gpt2_embedding_matrix):
+    results = []
+    for embedding in vision_embed:
+        similarity = torch.nn.functional.cosine_similarity(
+            embedding.unsqueeze(0), gpt2_embedding_matrix, dim=1
+        )
+        closest_idx = torch.argmax(similarity).item()
+        results.append(closest_idx)
+    return results
+
+
 def process_images_and_generate_text(
     image_folder,
     output_folder,
@@ -71,8 +82,15 @@ def process_images_and_generate_text(
                 next(connector.parameters()).dtype
             )
 
+            gpt2_embedding_matrix = model.wte.weight
+            closest_indices = find_closest_indices(
+                vision_embed[0], gpt2_embedding_matrix
+            )
+            decoded_tokens = tokenizer.decode(closest_indices)
+            print(f"  Decoded Tokens: {decoded_tokens}")
+
         generated_text = generate_text(
-            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.2
+            model, tokenizer, vision_embeds=vision_embed[0], temperature=0.8
         )
 
         save_image_and_caption_to_png(
@@ -108,7 +126,7 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    image_folder = "input_images"
+    image_folder = "../coco/val2017"
     output_folder = f"outputs-{current_time}"
 
     gpt_weights_path = "gpt2.pt"
